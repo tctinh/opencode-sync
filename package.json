@@ -1,6 +1,6 @@
 {
   "name": "opencodesync",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Sync OpenCode settings and session contexts across devices via GitHub Gist",
   "type": "module",
   "main": "./dist/plugin/index.js",
