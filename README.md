@@ -29,23 +29,14 @@ You're deep in a coding session on your work machine. You've built up context wi
 ## Quick Start
 
 ```bash
-# Install globally
 npm install -g opencodesync
-
-# Set up on your first device
 opencodesync init
-
-# Push your settings
-opencodesync push
 ```
 
-On your second device:
-```bash
-opencodesync init   # Same credentials
-opencodesync pull   # Everything synced
-```
+That's it. The wizard walks you through setup and automatically syncs your settings.
 
-That's it. Your configs, agents, commands, and contexts are now synced.
+**First device?** → Creates a new Gist and offers to push your current config  
+**Second device?** → Finds your existing Gist and offers to pull everything down
 
 ---
 
