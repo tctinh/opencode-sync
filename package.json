@@ -1,0 +1,68 @@
+{
+  "name": "opencodesync",
+  "version": "0.1.0",
+  "description": "Sync OpenCode settings and session contexts across devices via GitHub Gist",
+  "type": "module",
+  "main": "./dist/plugin/index.js",
+  "types": "./dist/plugin/index.d.ts",
+  "bin": {
+    "opencodesync": "./dist/cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/plugin/index.js",
+      "types": "./dist/plugin/index.d.ts"
+    },
+    "./cli": {
+      "import": "./dist/cli/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "cli": "node ./dist/cli/index.js"
+  },
+  "keywords": [
+    "opencode",
+    "sync",
+    "settings",
+    "gist",
+    "cli",
+    "plugin"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/opencodesync"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@octokit/rest": "^21.0.0",
+    "commander": "^12.1.0",
+    "glob": "^11.0.0",
+    "inquirer": "^9.2.0"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.7",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.0"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": {
+      "optional": true
+    }
+  }
+}

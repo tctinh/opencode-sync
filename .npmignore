@@ -1,0 +1,19 @@
+# Source files (only publish dist)
+src/
+
+# Config files
+tsconfig.json
+.gitignore
+.editorconfig
+
+# IDE
+.vscode/
+.idea/
+
+# Test
+*.test.ts
+*.spec.ts
+coverage/
+
+# Dev files
+.env*
