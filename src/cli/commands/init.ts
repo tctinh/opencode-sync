@@ -7,6 +7,8 @@ import { saveAuth, loadAuth, clearAuth } from "../../storage/auth.js";
 import { validateToken, getUser, findSyncGist } from "../../core/gist.js";
 import { generatePassphrase } from "../../core/crypto.js";
 import { paths } from "../../utils/paths.js";
+import { pushCommand } from "./push.js";
+import { pullCommand } from "./pull.js";
 
 interface InitOptions {
   force?: boolean;
@@ -150,13 +152,43 @@ export async function initCommand(options: InitOptions): Promise<void> {
   // Summary
   console.log("─".repeat(50));
   console.log("Setup Complete!\n");
-  console.log("Next steps:");
+  
+  // Offer to pull or push based on whether using existing gist
   if (gistId) {
-    console.log("  • Run 'opencodesync pull' to download your settings");
+    const { shouldPull } = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "shouldPull",
+        message: "Do you want to pull your settings from this Gist now?",
+        default: true,
+      },
+    ]);
+    
+    if (shouldPull) {
+      console.log("\nPulling settings...\n");
+      await pullCommand({ verbose: false });
+    } else {
+      console.log("\nRun 'opencodesync pull' when you're ready to download your settings.");
+    }
   } else {
-    console.log("  • Run 'opencodesync push' to upload your settings");
+    const { shouldPush } = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "shouldPush",
+        message: "Do you want to push your current settings now?",
+        default: true,
+      },
+    ]);
+    
+    if (shouldPush) {
+      console.log("\nPushing settings...\n");
+      await pushCommand({ verbose: false, force: false });
+    } else {
+      console.log("\nRun 'opencodesync push' when you're ready to upload your settings.");
+    }
   }
-  console.log("  • Run 'opencodesync status' to check sync status\n");
+  
+  console.log("\nRun 'opencodesync status' to check sync status.\n");
   
   console.log("⚠️  IMPORTANT: Remember your passphrase!");
   console.log("   You'll need it to sync on other devices.\n");

@@ -1,307 +1,181 @@
-# opencodesync
+<p align="center">
+  <img src="https://img.shields.io/npm/v/opencodesync.svg?style=flat-square&color=blue" alt="npm version" />
+  <img src="https://img.shields.io/npm/dm/opencodesync.svg?style=flat-square&color=green" alt="downloads" />
+  <img src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" alt="license" />
+</p>
 
-[![npm version](https://img.shields.io/npm/v/opencodesync.svg)](https://www.npmjs.com/package/opencodesync)
-[![npm downloads](https://img.shields.io/npm/dm/opencodesync.svg)](https://www.npmjs.com/package/opencodesync)
-[![CI](https://github.com/tctinh/opencode-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/tctinh/opencode-sync/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<h1 align="center">opencodesync</h1>
 
-Sync your OpenCode settings and session contexts across devices using GitHub Gist.
+<p align="center">
+  <strong>Start coding on your laptop. Continue on your desktop. Never lose context.</strong>
+</p>
 
-## Features
+<p align="center">
+  Seamlessly sync your OpenCode settings, custom agents, and AI session contexts across all your devices.
+</p>
 
-- **Config Sync**: Sync your OpenCode configuration files (opencode.json, custom agents, commands, AGENTS.md)
-- **Context Export**: AI-powered session summarization with privacy safeguards
-- **Context Import**: Resume work on any device with full context
-- **Secure**: End-to-end encryption with AES-256-GCM
-- **Private**: Uses private GitHub Gists for storage
+---
 
-## Installation
+## The Problem
 
-```bash
-npm install -g opencodesync
-```
+You're deep in a coding session on your work machine. You've built up context with your AI assistant - it understands your architecture, your decisions, your next steps. Then you need to switch to your home computer.
+
+**Without opencodesync:** Start from scratch. Re-explain everything. Lose momentum.
+
+**With opencodesync:** One command. Full context restored. Keep building.
+
+---
 
 ## Quick Start
 
-### 1. Initialize on your primary device
-
 ```bash
+# Install globally
+npm install -g opencodesync
+
+# Set up on your first device
 opencodesync init
-```
 
-This will:
-- Guide you through creating a GitHub Personal Access Token
-- Set up your encryption passphrase
-- Create your sync storage
-
-### 2. Push your settings
-
-```bash
+# Push your settings
 opencodesync push
 ```
 
-### 3. Set up on another device
-
+On your second device:
 ```bash
-opencodesync init   # Use the SAME token and passphrase
-opencodesync pull
+opencodesync init   # Same credentials
+opencodesync pull   # Everything synced
 ```
+
+That's it. Your configs, agents, commands, and contexts are now synced.
+
+---
+
+## What You Get
+
+### Sync Your Entire Setup
+
+| What | Synced |
+|------|--------|
+| Main config (`opencode.json`) | ✅ |
+| Custom agents (`agent/*.md`) | ✅ |
+| Custom commands (`command/*.md`) | ✅ |
+| Global instructions (`AGENTS.md`) | ✅ |
+| Plugin configs (`*.jsonc`, `oh-my-opencode.json`) | ✅ |
+| Skills directory (`skills/**`) | ✅ |
+| Session contexts | ✅ |
+
+### Never Lose Your AI Context
+
+Export your session before switching devices:
+```
+/context-export "Auth Implementation" --guidance "focus on OAuth decisions"
+```
+
+Resume on any machine:
+```
+/context-import "Auth Implementation"
+```
+
+Your AI picks up exactly where you left off.
+
+### Bank-Grade Security
+
+- **AES-256-GCM encryption** - Your data is encrypted before it leaves your machine
+- **Private GitHub Gists** - Only you can access your sync storage
+- **Zero plaintext** - Even if someone gets your Gist, they can't read it without your passphrase
+
+---
+
+## Daily Workflow
+
+**Morning at the office:**
+```bash
+opencodesync pull                    # Get latest from home
+# ... work on features ...
+/context-export "Feature Progress"   # Save your context
+opencodesync push                    # Sync to cloud
+```
+
+**Evening at home:**
+```bash
+opencodesync pull                    # Get settings + context
+/context-import "Feature Progress"   # Resume with full context
+# ... continue seamlessly ...
+```
+
+---
 
 ## CLI Commands
 
-### `opencodesync init`
+| Command | What it does |
+|---------|--------------|
+| `opencodesync init` | Set up GitHub token and encryption passphrase |
+| `opencodesync push` | Upload your settings to the cloud |
+| `opencodesync pull` | Download settings from the cloud |
+| `opencodesync status` | Check what's changed since last sync |
 
-Set up sync credentials (GitHub token and encryption passphrase).
+Use `--verbose` on any command for detailed output.
 
-```bash
-opencodesync init [--force]
-```
+---
 
-Options:
-- `--force`, `-f`: Overwrite existing credentials
+## Plugin Commands (inside OpenCode)
 
-### `opencodesync push`
+| Command | What it does |
+|---------|--------------|
+| `/context-export [name]` | Save current session as a portable context |
+| `/context-import [name]` | Load a saved context into your session |
+| `/context-list` | See all your saved contexts |
+| `/context-prune <name>` | Delete old contexts |
 
-Push local config files to GitHub Gist.
+---
 
-```bash
-opencodesync push [--force] [--verbose]
-```
+## Privacy First
 
-Options:
-- `--force`, `-f`: Push even if no changes detected
-- `--verbose`, `-v`: Show detailed output
+Context exports are **AI-generated summaries**, not raw data. They capture:
 
-### `opencodesync pull`
+- Goals and objectives
+- Technical approaches and decisions
+- Progress and next steps
 
-Pull config files from GitHub Gist.
-
-```bash
-opencodesync pull [--force] [--verbose]
-```
-
-Options:
-- `--force`, `-f`: Overwrite local files without confirmation
-- `--verbose`, `-v`: Show detailed output
-
-### `opencodesync status`
-
-Show sync status and pending changes.
-
-```bash
-opencodesync status [--verbose]
-```
-
-Options:
-- `--verbose`, `-v`: Show detailed file list
-
-## Plugin Commands (in OpenCode)
-
-### `/context-export`
-
-Export current session as a privacy-safe context for cross-device sync.
-
-```
-/context-export [name] [--guidance "focus on..."]
-```
-
-Arguments:
-- `name`: Custom name for this context (optional, auto-generated if not provided)
-- `--guidance`: What to focus on in the summary
-
-Example:
-```
-/context-export "Auth Implementation" --guidance "focus on OAuth flow, skip database details"
-```
-
-### `/context-import`
-
-Import saved contexts to resume work.
-
-```
-/context-import [name...]
-```
-
-Arguments:
-- `name...`: Context names or IDs to import (supports partial matching)
-
-Example:
-```
-/context-import "Auth Implementation"
-/context-import auth database  # Import multiple contexts
-```
-
-### `/context-list`
-
-List all saved contexts.
-
-```
-/context-list [--search query]
-```
-
-### `/context-prune`
-
-Delete saved contexts.
-
-```
-/context-prune <name>
-/context-prune --all
-```
-
-Arguments:
-- `name`: Name or ID of context to delete
-- `--all`: Delete all contexts (requires confirmation)
-
-## What Gets Synced
-
-| Item | Synced | Notes |
-|------|--------|-------|
-| `opencode.json` / `opencode.jsonc` | ✅ Yes | Main config file |
-| Custom agents (`agent/*.md`) | ✅ Yes | Your custom agent definitions |
-| Custom commands (`command/*.md`) | ✅ Yes | Your custom slash commands |
-| `AGENTS.md` | ✅ Yes | Global instructions |
-| Plugin configs (`*.jsonc`, `oh-my-opencode.json`) | ✅ Yes | Plugin ecosystem configurations |
-| Skills directory (`skills/**`) | ✅ Yes | Skill files (symlinks resolved) |
-| Session contexts | ✅ Yes | AI-generated summaries only |
-| Auth tokens | ❌ **Never** | Security - never synced |
-| Plugin source files | ❌ No | Install from config |
-| Project configs (`.opencode/`) | ❌ No | Project-specific |
-| Session raw data | ❌ No | Too large, contains sensitive data |
-| Blocked files (`*.log`, `*.bak`, etc.) | ❌ No | Excluded by blocklist |
-
-## Security
-
-### Encryption
-
-- All data is encrypted with **AES-256-GCM** before upload
-- Encryption key derived from your passphrase using **PBKDF2** (100,000 iterations)
-- Each sync uses a unique random salt and IV
-- Your passphrase never leaves your device
-
-### Privacy
-
-The context export system includes built-in privacy safeguards:
-
-**Never included in exports:**
+They **never** include:
 - Code snippets or implementations
-- API keys, tokens, passwords
-- Database connection strings
-- Internal URLs or infrastructure details
-- File contents or raw data
+- API keys, tokens, or secrets
+- Database strings or internal URLs
+- Raw file contents
 
-**What gets captured:**
-- General goals and objectives
-- High-level technical approaches
-- Architectural decisions
-- Progress and next steps (abstract)
+Your intellectual property stays safe.
 
-### Storage
-
-- Uses **private** GitHub Gists only
-- GitHub token stored locally with encryption
-- Gist URL not shared publicly
-
-## Configuration Files
-
-### Storage Locations
-
-| Path | Purpose |
-|------|---------|
-| `~/.config/opencode/` | OpenCode config files |
-| `~/.local/share/opencode/sync/` | Sync storage |
-| `~/.local/share/opencode/sync/auth.json` | Encrypted credentials |
-| `~/.local/share/opencode/sync/state.json` | Sync state |
-| `~/.local/share/opencode/sync/contexts.json` | Saved contexts |
+---
 
 ## Troubleshooting
 
-### "Not configured" error
+| Error | Solution |
+|-------|----------|
+| "Not configured" | Run `opencodesync init` |
+| "Decryption failed" | Use the same passphrase as your other devices |
+| "Invalid token" | Create a new GitHub token with `gist` scope |
 
-Run `opencodesync init` to set up your credentials.
+Need to start fresh? `opencodesync init --force && opencodesync push --force`
 
-### "Decryption failed" error
+---
 
-Make sure you're using the **same passphrase** as on your other devices. If you've forgotten it, you'll need to start fresh:
-
-```bash
-opencodesync init --force
-opencodesync push --force
-```
-
-Then re-initialize your other devices with the new passphrase.
-
-### "Invalid token" error
-
-Your GitHub token may have expired or been revoked. Create a new one:
-
-1. Go to https://github.com/settings/tokens/new
-2. Create a token with the `gist` scope
-3. Run `opencodesync init --force`
-
-### "Rate limit" error
-
-GitHub API has rate limits. Wait a few minutes and try again.
-
-## Workflow Example
-
-### Machine A (Office)
-
-```bash
-# Morning: Start work
-opencodesync pull              # Get latest from home
-
-# Work on feature...
-
-# End of day: Save context
-# In OpenCode:
-/context-export "Feature X Progress" --guidance "focus on API design decisions"
-
-# Push to sync
-opencodesync push
-```
-
-### Machine B (Home)
-
-```bash
-# Evening: Continue work
-opencodesync pull              # Get settings + context from office
-
-# In OpenCode:
-/context-import "Feature X"    # Resume with full context
-
-# Continue working...
-```
-
-## API Usage (for plugin developers)
+## For Plugin Developers
 
 ```typescript
-import {
-  createPluginTools,
-  createEventHooks,
-  addContext,
-  getAllContexts,
-  paths,
-} from "opencodesync";
+import { createPluginTools, addContext, getAllContexts } from "opencodesync";
 
-// Create all tools
 const tools = createPluginTools();
-
-// Set up event hooks
-const hooks = createEventHooks();
-hooks.setToastHandler((options) => {
-  // Show toast notification in your UI
-});
-
-// Listen for session compaction
-hooks.onSessionCompacted((event) => {
-  // Remind user to export context
-});
-
-// Direct context management
-const context = addContext("My Context", "Summary text...");
-const allContexts = getAllContexts();
+const context = addContext("My Context", "Summary...");
+const all = getAllContexts();
 ```
+
+---
 
 ## License
 
 MIT
+
+---
+
+<p align="center">
+  <strong>Stop context-switching. Start syncing.</strong>
+</p>
