@@ -1,5 +1,10 @@
 # opencodesync
 
+[![npm version](https://img.shields.io/npm/v/opencodesync.svg)](https://www.npmjs.com/package/opencodesync)
+[![npm downloads](https://img.shields.io/npm/dm/opencodesync.svg)](https://www.npmjs.com/package/opencodesync)
+[![CI](https://github.com/tctinh/opencode-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/tctinh/opencode-sync/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Sync your OpenCode settings and session contexts across devices using GitHub Gist.
 
 ## Features
