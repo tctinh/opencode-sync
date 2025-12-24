@@ -33,8 +33,10 @@ jobs:
       - name: Test CLI
         run: node dist/cli/index.js --help
 
-      - name: Publish to npm (Trusted Publishing)
+      - name: Publish to npm
         run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
