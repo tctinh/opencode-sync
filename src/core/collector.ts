@@ -3,9 +3,10 @@
  */
 
 import { glob } from "glob";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, realpathSync } from "node:fs";
 import { join } from "node:path";
-import { paths, configPatterns } from "../utils/paths.js";
+import { minimatch } from "minimatch";
+import { paths, configPatterns, syncBlocklist } from "../utils/paths.js";
 import { hashContent } from "../utils/hash.js";
 
 /**
@@ -33,6 +34,13 @@ export interface CollectionResult {
 }
 
 /**
+ * Check if a file path is blocked from sync
+ */
+function isBlocked(relativePath: string): boolean {
+  return syncBlocklist.some(pattern => minimatch(relativePath, pattern));
+}
+
+/**
  * Collect all OpenCode config files
  */
 export async function collectConfigFiles(): Promise<CollectionResult> {
@@ -53,17 +61,31 @@ export async function collectConfigFiles(): Promise<CollectionResult> {
       cwd: configDir,
       nodir: true,
       dot: false,
+      follow: true, // Resolve symlinks (for skills directory)
     });
     
     for (const match of matches) {
+      // Skip blocked files
+      if (isBlocked(match)) {
+        continue;
+      }
+      
       const fullPath = join(configDir, match);
       
       if (!existsSync(fullPath)) {
         continue;
       }
       
+      // Resolve symlinks to get actual file content
+      let realPath = fullPath;
       try {
-        const content = readFileSync(fullPath, "utf8");
+        realPath = realpathSync(fullPath);
+      } catch {
+        // If realpath fails, use original path
+      }
+      
+      try {
+        const content = readFileSync(realPath, "utf8");
         const hash = hashContent(content);
         
         files.push({
@@ -96,6 +118,11 @@ export async function collectConfigFiles(): Promise<CollectionResult> {
  * Check if a path matches sync patterns
  */
 export function shouldSync(relativePath: string): boolean {
+  // Check blocklist first
+  if (isBlocked(relativePath)) {
+    return false;
+  }
+  
   // Check main config files
   if ((configPatterns.mainConfig as readonly string[]).includes(relativePath)) {
     return true;
@@ -116,6 +143,18 @@ export function shouldSync(relativePath: string): boolean {
     return true;
   }
   
+  // Check plugin configs (*.jsonc or known ecosystem configs)
+  for (const pattern of configPatterns.pluginConfigs) {
+    if (minimatch(relativePath, pattern)) {
+      return true;
+    }
+  }
+  
+  // Check skills pattern
+  if (relativePath.startsWith("skills/")) {
+    return true;
+  }
+  
   return false;
 }
 
@@ -128,12 +167,16 @@ export function getFileStats(files: CollectedFile[]): {
   agents: number;
   commands: number;
   instructions: number;
+  plugins: number;
+  skills: number;
   totalSize: number;
 } {
   let configs = 0;
   let agents = 0;
   let commands = 0;
   let instructions = 0;
+  let plugins = 0;
+  let skills = 0;
   let totalSize = 0;
   
   for (const file of files) {
@@ -147,6 +190,10 @@ export function getFileStats(files: CollectedFile[]): {
       commands++;
     } else if (file.relativePath === configPatterns.instructions) {
       instructions++;
+    } else if (file.relativePath.startsWith("skills/")) {
+      skills++;
+    } else if (file.relativePath.endsWith(".jsonc") || file.relativePath === "oh-my-opencode.json") {
+      plugins++;
     }
   }
   
@@ -156,6 +203,8 @@ export function getFileStats(files: CollectedFile[]): {
     agents,
     commands,
     instructions,
+    plugins,
+    skills,
     totalSize,
   };
 }

@@ -73,6 +73,8 @@ export async function pushCommand(options: PushOptions): Promise<void> {
     console.log(`  • ${stats.agents} custom agents`);
     console.log(`  • ${stats.commands} custom commands`);
     console.log(`  • ${stats.instructions} instruction files`);
+    if (stats.plugins > 0) console.log(`  • ${stats.plugins} plugin configs`);
+    if (stats.skills > 0) console.log(`  • ${stats.skills} skill files`);
   }
   
   // Load contexts

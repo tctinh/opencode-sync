@@ -1,6 +1,6 @@
 {
   "name": "opencodesync",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Sync OpenCode settings and session contexts across devices via GitHub Gist",
   "type": "module",
   "main": "./dist/plugin/index.js",
@@ -54,7 +54,8 @@
     "@octokit/rest": "^21.0.0",
     "commander": "^12.1.0",
     "glob": "^11.0.0",
-    "inquirer": "^9.2.0"
+    "inquirer": "^9.2.0",
+    "minimatch": "^10.0.1"
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.7",

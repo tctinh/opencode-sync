@@ -57,6 +57,8 @@ export async function statusCommand(options: StatusOptions): Promise<void> {
     console.log(`  • ${stats.agents} custom agents`);
     console.log(`  • ${stats.commands} custom commands`);
     console.log(`  • ${stats.instructions} instruction files`);
+    if (stats.plugins > 0) console.log(`  • ${stats.plugins} plugin configs`);
+    if (stats.skills > 0) console.log(`  • ${stats.skills} skill files`);
     
     if (options.verbose) {
       console.log("\n  Files:");

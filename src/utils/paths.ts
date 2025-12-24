@@ -104,6 +104,21 @@ export const configPatterns = {
   instructions: "AGENTS.md",
 
   /**
+   * Plugin configuration files
+   * Pattern-based (*.jsonc) + known ecosystem configs
+   */
+  pluginConfigs: [
+    "*.jsonc",                    // General pattern (DCP, smart-title, etc.)
+    "oh-my-opencode.json",        // oh-my-opencode specific
+  ],
+
+  /**
+   * Skills directory (all file types: .md, .sh, .py, .ts, etc.)
+   * Symlinks are resolved during collection
+   */
+  skills: "skills/**/*",
+
+  /**
    * All patterns combined
    */
   get all(): string[] {
@@ -112,9 +127,26 @@ export const configPatterns = {
       this.agents,
       this.commands,
       this.instructions,
+      ...this.pluginConfigs,
+      this.skills,
     ];
   },
 } as const;
+
+/**
+ * Files/patterns to exclude from sync (sensitive/generated)
+ * These patterns are matched against relative paths from config directory
+ */
+export const syncBlocklist = [
+  "antigravity-*.json",       // OAuth tokens & reservations
+  "package.json",             // npm generated
+  "package-lock.json",
+  "bun.lock",
+  "node_modules/**",
+  "logs/**",
+  "repos/**",                 // External repos (skills source)
+  ".git/**",
+] as const;
 
 /**
  * Ensure a directory exists, creating it if necessary

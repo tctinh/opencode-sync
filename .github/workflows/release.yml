@@ -33,7 +33,11 @@ jobs:
         run: node dist/cli/index.js --help
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        uses: JS-DevTools/npm-publish@v3
+        with:
+          token: ${{ secrets.NPM_KEY }}
+          access: public
+          provenance: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

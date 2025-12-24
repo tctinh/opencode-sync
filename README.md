@@ -160,11 +160,14 @@ Arguments:
 | Custom agents (`agent/*.md`) | ✅ Yes | Your custom agent definitions |
 | Custom commands (`command/*.md`) | ✅ Yes | Your custom slash commands |
 | `AGENTS.md` | ✅ Yes | Global instructions |
+| Plugin configs (`*.jsonc`, `oh-my-opencode.json`) | ✅ Yes | Plugin ecosystem configurations |
+| Skills directory (`skills/**`) | ✅ Yes | Skill files (symlinks resolved) |
 | Session contexts | ✅ Yes | AI-generated summaries only |
 | Auth tokens | ❌ **Never** | Security - never synced |
 | Plugin source files | ❌ No | Install from config |
 | Project configs (`.opencode/`) | ❌ No | Project-specific |
 | Session raw data | ❌ No | Too large, contains sensitive data |
+| Blocked files (`*.log`, `*.bak`, etc.) | ❌ No | Excluded by blocklist |
 
 ## Security
 
