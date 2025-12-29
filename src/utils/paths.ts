@@ -115,8 +115,9 @@ export const configPatterns = {
   /**
    * Skills directory (all file types: .md, .sh, .py, .ts, etc.)
    * Symlinks are resolved during collection
+   * Note: Oh-My-OpenCode uses 'skill/' (singular), not 'skills/'
    */
-  skills: "skills/**/*",
+  skills: "skill/**/*",
 
   /**
    * All patterns combined
