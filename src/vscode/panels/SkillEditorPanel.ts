@@ -561,14 +561,18 @@ export class SkillEditorPanel {
         input.checked = input.value === mode;
       });
 
-      markdownEditor.classList.remove('active', 'hidden');
-      preview.classList.remove('hidden');
-      markdownEditor.style.display = 'none';
-      preview.style.display = 'none';
+      if (mode === 'edit') {
+        markdownEditor.style.display = 'block';
+        preview.style.display = 'none';
+      } else if (mode === 'preview') {
+        markdownEditor.style.display = 'none';
+        preview.style.display = 'block';
+        updatePreview();
+      } else if (mode === 'split') {
+        markdownEditor.style.display = 'block';
+        preview.style.display = 'block';
+        updatePreview();
       }
-
-      updatePreview();
-    }
     }
 
     editor.addEventListener('input', () => {
