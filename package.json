@@ -1,7 +1,7 @@
 {
   "name": "coding-agent-sync",
   "displayName": "Coding Agent Sync",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Sync AI coding assistant configs (Claude Code, OpenCode, Codex) across devices via GitHub Gist",
   "publisher": "tctinh",
   "icon": "icon.png",
