@@ -5,38 +5,35 @@ import { existsSync, readdirSync, statSync } from 'fs';
 import {
   BaseTreeItem,
   SyncStatusItem,
+  LocalGroupItem,
+  RemoteEnvironmentItem,
   GlobalMCPItem,
   AssistantItem,
   CategoryItem,
   SettingsItem,
   PluginConfigItem,
   MCPServerItem,
+  RemoteProviderItem,
+  RemoteMCPGroupItem,
+  RemoteCategoryItem,
+  RemoteFolderItem,
+  RemoteFileItem,
   SkillFolderItem,
   SkillItem,
   ProjectConfigItem,
   ProjectFileItem,
-  RemoteProviderItem,
-  RemoteCategoryItem,
-  RemoteFolderItem,
-  RemoteFileItem,
   EmptyItem,
-} from './TreeItems';
-import { getInstalledProviders, initializeProviders } from '../../providers/registry';
-import { getGlobalMCPServers } from '../../providers/mcp';
-import type { AssistantProvider, AssistantType, SyncPayload } from '../../providers/types';
-import { isPayloadV2 } from '../../providers/types';
-import { loadAuth } from '../../storage/auth';
-import { loadSyncState, formatLastSync } from '../../storage/state';
-import { getGist } from '../../core/gist';
-import { decryptObject } from '../../core/crypto';
+} from './TreeItems.js';
+import { getInstalledProviders, initializeProviders } from '../../providers/registry.js';
+import { getGlobalMCPServers } from '../../providers/mcp.js';
+import { listSyncGists, getGist } from '../../core/gist.js';
+import type { AssistantProvider, AssistantType, SyncPayload } from '../../providers/types.js';
+import { isPayloadV2 } from '../../providers/types.js';
+import { loadAuth } from '../../storage/auth.js';
+import { loadSyncState, formatLastSync } from '../../storage/state.js';
+import { decryptObject } from '../../core/crypto.js';
 
 type TreeItem = BaseTreeItem | vscode.TreeItem;
-
-interface SkillFolder {
-  name: string;
-  path: string;
-  files: string[];
-}
 
 export class ConfigTreeProvider implements vscode.TreeDataProvider<TreeItem> {
   private _onDidChangeTreeData = new vscode.EventEmitter<TreeItem | undefined | null | void>();
@@ -65,68 +62,49 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<TreeItem> {
   }
 
   async getChildren(element?: TreeItem): Promise<TreeItem[]> {
-    if (!this.initialized) {
-      return [];
-    }
+    if (!this.initialized) return [];
 
-    if (!element) {
-      return this.getRootItems();
-    }
+    if (!element) return this.getRootItems();
 
-    if (element instanceof SyncStatusItem) {
-      return this.getRemoteGistChildren();
-    }
+    if (element instanceof LocalGroupItem) return this.getLocalEnvironmentItems();
+    if (element instanceof AssistantItem) return this.getAssistantChildren(element.providerId);
+    if (element instanceof CategoryItem) return this.getCategoryChildren(element.providerId, element.category);
+    if (element instanceof SkillFolderItem) return this.getSkillFolderChildren(element);
+    if (element instanceof ProjectConfigItem) return this.getProjectConfigChildren(element.workspacePath);
 
-    if (element instanceof RemoteProviderItem) {
-      return this.getRemoteProviderChildren(element);
-    }
-
-    if (element instanceof RemoteCategoryItem) {
-      return this.getRemoteCategoryChildren(element);
-    }
-
-    if (element instanceof RemoteFolderItem) {
-      return this.getRemoteFolderChildren(element);
-    }
-
-    if (element instanceof GlobalMCPItem) {
-      return this.getGlobalMCPChildren();
-    }
-
-    if (element instanceof AssistantItem) {
-      return this.getAssistantChildren(element.providerId);
-    }
-
-    if (element instanceof CategoryItem) {
-      return this.getCategoryChildren(element.providerId, element.category);
-    }
-
-    if (element instanceof SkillFolderItem) {
-      return this.getSkillFolderChildren(element);
-    }
-
-    if (element instanceof ProjectConfigItem) {
-      return this.getProjectConfigChildren(element.workspacePath);
-    }
+    if (element instanceof RemoteEnvironmentItem) return this.getRemoteEnvironmentChildren(element.gistId);
+    if (element instanceof RemoteProviderItem) return this.getRemoteProviderChildren(element);
+    if (element instanceof RemoteCategoryItem) return this.getRemoteCategoryChildren(element);
+    if (element instanceof RemoteFolderItem) return this.getRemoteFolderChildren(element);
+    if (element instanceof RemoteMCPGroupItem) return this.getRemoteMCPChildren(element);
 
     return [];
   }
 
   private async getRootItems(): Promise<TreeItem[]> {
     const items: TreeItem[] = [];
-
     const auth = loadAuth();
     const syncState = loadSyncState();
-    items.push(
-      new SyncStatusItem(
-        !!auth?.gistId,
-        auth?.gistId,
-        syncState.lastSync ? formatLastSync() : undefined
-      )
-    );
+    
+    items.push(new SyncStatusItem(!!auth?.githubToken, syncState.lastSync ? formatLastSync() : undefined));
+    items.push(new LocalGroupItem());
 
-    const globalMcpServers = getGlobalMCPServers();
-    items.push(new GlobalMCPItem(globalMcpServers.length));
+    if (auth?.githubToken) {
+      try {
+        const gists = await listSyncGists(auth.githubToken);
+        for (const gist of gists) {
+          const name = gist.description.split(':').pop()?.trim() || 'Unnamed Environment';
+          items.push(new RemoteEnvironmentItem(gist.id, name, gist.updatedAt));
+        }
+      } catch {}
+    }
+
+    return items;
+  }
+
+  private async getLocalEnvironmentItems(): Promise<TreeItem[]> {
+    const items: TreeItem[] = [];
+    items.push(new GlobalMCPItem(getGlobalMCPServers().length));
 
     const config = vscode.workspace.getConfiguration('codingAgentSync');
     const enabledProviders = config.get<string[]>('enabledProviders') || ['claude-code', 'opencode'];
@@ -148,89 +126,95 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     return items;
   }
 
-  private getGlobalMCPChildren(): TreeItem[] {
-    const servers = getGlobalMCPServers();
-    if (servers.length === 0) {
-      return [new EmptyItem('No MCP servers in ~/.mcp.json')];
-    }
-    return servers.map((server) => new MCPServerItem(server, 'global'));
+  private async getRemoteEnvironmentChildren(gistId: string): Promise<TreeItem[]> {
+    const auth = loadAuth();
+    if (!auth?.githubToken) return [];
+
+    try {
+      const gist = await getGist(auth.githubToken, gistId);
+      const file = gist.files['coding-agent-sync.json'] || gist.files['opencodesync.json'];
+      if (!file?.content) return [new EmptyItem('Empty environment')];
+
+      const payload = decryptObject<SyncPayload>(JSON.parse(file.content), auth.passphrase);
+      const items: TreeItem[] = [];
+
+      if (isPayloadV2(payload) && payload.mcpServers?.length) {
+        items.push(new RemoteMCPGroupItem(gistId, payload.mcpServers.length));
+      }
+
+      if (isPayloadV2(payload)) {
+        for (const [id, data] of Object.entries(payload.providers)) {
+          if (data?.files.length) {
+            items.push(new RemoteProviderItem(gistId, id as AssistantType, data.files.length));
+          }
+        }
+      } else if (payload.config.files.length) {
+        items.push(new RemoteProviderItem(gistId, 'opencode', payload.config.files.length));
+      }
+
+      return items;
+    } catch { return [new EmptyItem('Failed to load remote data')]; }
+  }
+
+  private async getRemoteMCPChildren(group: RemoteMCPGroupItem): Promise<TreeItem[]> {
+    const auth = loadAuth();
+    if (!auth?.githubToken) return [];
+    try {
+      const gist = await getGist(auth.githubToken, group.gistId);
+      const file = gist.files['coding-agent-sync.json'] || gist.files['opencodesync.json'];
+      if (!file?.content) return [];
+      const payload = decryptObject<SyncPayload>(JSON.parse(file.content), auth.passphrase);
+      if (isPayloadV2(payload) && payload.mcpServers) {
+        return payload.mcpServers.map(s => new MCPServerItem(s, 'remote'));
+      }
+    } catch {}
+    return [];
   }
 
   private async getAssistantChildren(providerId: AssistantType): Promise<TreeItem[]> {
     const provider = this.providers.find((p) => p.id === providerId);
-    if (!provider) {
-      return [new EmptyItem('Provider not found')];
-    }
-
-    const isInstalled = await provider.isInstalled();
-    if (!isInstalled) {
-      return [new EmptyItem('Not installed')];
-    }
+    if (!provider || !(await provider.isInstalled())) return [];
 
     const items: TreeItem[] = [];
-
-    const settingsFiles = this.getSettingsFiles(provider);
-    items.push(new CategoryItem('Settings', 'settings', providerId, settingsFiles.length));
+    items.push(new CategoryItem('Settings', 'settings', providerId, this.getSettingsFiles(provider).length));
 
     if (providerId === 'opencode') {
       const pluginConfigs = (provider as any).getPluginConfigs?.() || [];
-      if (pluginConfigs.length > 0) {
-        items.push(new CategoryItem('Plugins', 'plugins', providerId, pluginConfigs.length));
-      }
+      if (pluginConfigs.length > 0) items.push(new CategoryItem('Plugins', 'plugins', providerId, pluginConfigs.length));
     }
 
     const commands = this.getFilesInCategory(provider, 'commands');
-    if (commands.length > 0 || providerId === 'claude-code') {
-      items.push(new CategoryItem('Commands', 'commands', providerId, commands.length));
-    }
+    if (commands.length > 0 || providerId === 'claude-code') items.push(new CategoryItem('Commands', 'commands', providerId, commands.length));
 
     const agents = this.getFilesInCategory(provider, 'agents');
-    if (agents.length > 0 || providerId === 'opencode') {
-      items.push(new CategoryItem('Agents', 'agents', providerId, agents.length));
-    }
+    if (agents.length > 0 || providerId === 'opencode') items.push(new CategoryItem('Agents', 'agents', providerId, agents.length));
 
-    const skillsLabel = providerId === 'claude-code' ? 'Rules' : 'Skills';
-    const skillsCategory = providerId === 'claude-code' ? 'rules' : 'skills';
     const skillFolders = this.getSkillFolders(provider);
-    items.push(new CategoryItem(skillsLabel, skillsCategory as 'skills' | 'rules', providerId, skillFolders.length));
+    items.push(new CategoryItem(providerId === 'claude-code' ? 'Rules' : 'Skills', providerId === 'claude-code' ? 'rules' : 'skills', providerId, skillFolders.length));
 
     return items;
   }
 
-  private async getCategoryChildren(
-    providerId: AssistantType,
-    category: 'settings' | 'plugins' | 'mcpServers' | 'commands' | 'agents' | 'skills' | 'rules'
-  ): Promise<TreeItem[]> {
+  private async getCategoryChildren(providerId: AssistantType, category: any): Promise<TreeItem[]> {
     const provider = this.providers.find((p) => p.id === providerId);
-    if (!provider) {
-      return [];
-    }
+    if (!provider) return [];
 
     switch (category) {
-      case 'settings':
-        return this.getSettingsItems(provider);
-      case 'plugins':
-        return this.getPluginItems(provider);
-      case 'mcpServers':
-        return this.getMcpServerItems(provider);
+      case 'settings': return this.getSettingsItems(provider);
+      case 'plugins': return this.getPluginItems(provider);
+      case 'mcpServers': return this.getMcpServerItems();
       case 'commands':
-      case 'agents':
-        return this.getSkillItems(provider, category);
+      case 'agents': return this.getSkillItems(provider, category);
       case 'skills':
-      case 'rules':
-        return this.getSkillFolderItems(provider);
-      default:
-        return [];
+      case 'rules': return this.getSkillFolderItems(provider);
+      default: return [];
     }
   }
 
   private getSettingsFiles(provider: AssistantProvider): string[] {
     const files: string[] = [];
     for (const pattern of provider.patterns.mainConfig) {
-      const filePath = path.join(provider.configDir, pattern);
-      if (existsSync(filePath)) {
-        files.push(pattern);
-      }
+      if (existsSync(path.join(provider.configDir, pattern))) files.push(pattern);
     }
     return files;
   }
@@ -238,186 +222,90 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<TreeItem> {
   private getSettingsItems(provider: AssistantProvider): TreeItem[] {
     const items: TreeItem[] = [];
     for (const pattern of provider.patterns.mainConfig) {
-      const filePath = path.join(provider.configDir, pattern);
-      if (existsSync(filePath)) {
-        items.push(new SettingsItem(pattern, filePath, provider.id));
-      }
+      const fullPath = path.join(provider.configDir, pattern);
+      if (existsSync(fullPath)) items.push(new SettingsItem(pattern, fullPath, provider.id));
     }
-
     if (provider.id === 'claude-code') {
       const claudeJson = path.join(homedir(), '.claude.json');
-      if (existsSync(claudeJson)) {
-        items.push(new SettingsItem('.claude.json', claudeJson, provider.id));
-      }
+      if (existsSync(claudeJson)) items.push(new SettingsItem('.claude.json', claudeJson, provider.id));
     }
-
-    if (items.length === 0) {
-      return [new EmptyItem('No settings files')];
-    }
-    return items;
+    return items.length > 0 ? items : [new EmptyItem('No settings files')];
   }
 
   private getPluginItems(provider: AssistantProvider): TreeItem[] {
-    const pluginConfigs = (provider as any).getPluginConfigs?.() || [];
-    if (pluginConfigs.length === 0) {
-      return [new EmptyItem('No plugin configs')];
-    }
-    return pluginConfigs.map((cfg: { fileName: string; pluginName: string; filePath: string }) =>
-      new PluginConfigItem(cfg.fileName, cfg.filePath, cfg.pluginName)
-    );
+    const configs = (provider as any).getPluginConfigs?.() || [];
+    return configs.length > 0 ? configs.map((cfg: any) => new PluginConfigItem(cfg.fileName, cfg.filePath, cfg.pluginName)) : [new EmptyItem('No plugin configs')];
   }
 
-  private async getMcpServerItems(provider: AssistantProvider): Promise<TreeItem[]> {
+  private async getMcpServerItems(): Promise<TreeItem[]> {
     const servers = getGlobalMCPServers();
-    if (servers.length === 0) {
-      return [new EmptyItem('No MCP servers configured')];
-    }
-    return servers.map((server) => new MCPServerItem(server, provider.id));
+    return servers.length > 0 ? servers.map((server) => new MCPServerItem(server, 'global')) : [new EmptyItem('No MCP servers')];
   }
 
-  private getSkillFolders(provider: AssistantProvider): SkillFolder[] {
-    const pattern = provider.patterns.skills;
-    const dir = pattern.split('/')[0];
+  private getSkillFolders(provider: AssistantProvider): any[] {
+    const dir = provider.patterns.skills.split('/')[0];
     const fullDir = path.join(provider.configDir, dir);
-
-    if (!existsSync(fullDir)) {
-      return [];
-    }
-
-    const folders: SkillFolder[] = [];
+    if (!existsSync(fullDir)) return [];
+    const folders: any[] = [];
     try {
-      const entries = readdirSync(fullDir, { withFileTypes: true });
-      for (const entry of entries) {
+      for (const entry of readdirSync(fullDir, { withFileTypes: true })) {
         if (entry.isDirectory()) {
           const folderPath = path.join(fullDir, entry.name);
-          const files = this.getFilesRecursive(folderPath);
-          folders.push({
-            name: entry.name,
-            path: folderPath,
-            files,
-          });
+          folders.push({ name: entry.name, path: folderPath, files: this.getFilesRecursive(folderPath) });
         }
       }
-    } catch {
-      // Ignore
-    }
+    } catch {}
     return folders;
   }
 
   private getSkillFolderItems(provider: AssistantProvider): TreeItem[] {
     const folders = this.getSkillFolders(provider);
-    if (folders.length === 0) {
-      return [new EmptyItem('No skills')];
-    }
-    return folders.map((folder) =>
-      new SkillFolderItem(folder.name, folder.path, folder.files.length, provider.id)
-    );
+    return folders.length > 0 ? folders.map((f) => new SkillFolderItem(f.name, f.path, f.files.length, provider.id)) : [new EmptyItem('No skills')];
   }
 
   private getSkillFolderChildren(folder: SkillFolderItem): TreeItem[] {
     const files = this.getFilesRecursive(folder.folderPath);
-    if (files.length === 0) {
-      return [new EmptyItem('Empty folder')];
-    }
-    return files.map((filePath) => {
-      const name = path.basename(filePath);
-      return new SkillItem(name, filePath, 'skill', folder.providerId);
-    });
+    return files.length > 0 ? files.map((f) => new SkillItem(path.basename(f), f, 'skill', folder.providerId)) : [new EmptyItem('Empty folder')];
   }
 
-  private getFilesInCategory(
-    provider: AssistantProvider,
-    category: 'commands' | 'agents'
-  ): string[] {
-    let pattern: string;
-    switch (category) {
-      case 'commands':
-        pattern = provider.patterns.commands;
-        break;
-      case 'agents':
-        pattern = provider.patterns.agents;
-        break;
-      default:
-        return [];
-    }
-
-    const dir = pattern.split('/')[0];
+  private getFilesInCategory(provider: AssistantProvider, category: string): string[] {
+    const dir = (provider.patterns as any)[category]?.split('/')[0];
+    if (!dir) return [];
     const fullDir = path.join(provider.configDir, dir);
-
-    if (!existsSync(fullDir)) {
-      return [];
-    }
-
-    try {
-      return this.getFilesRecursive(fullDir);
-    } catch {
-      return [];
-    }
+    return existsSync(fullDir) ? this.getFilesRecursive(fullDir) : [];
   }
 
   private getFilesRecursive(dir: string): string[] {
     const files: string[] = [];
     try {
-      const entries = readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          files.push(...this.getFilesRecursive(fullPath));
-        } else if (entry.isFile()) {
-          files.push(fullPath);
-        }
+        if (entry.isDirectory()) files.push(...this.getFilesRecursive(fullPath));
+        else if (entry.isFile()) files.push(fullPath);
       }
-    } catch {
-      // Ignore
-    }
+    } catch {}
     return files;
   }
 
-  private getSkillItems(
-    provider: AssistantProvider,
-    category: 'commands' | 'agents'
-  ): TreeItem[] {
+  private getSkillItems(provider: AssistantProvider, category: string): TreeItem[] {
     const files = this.getFilesInCategory(provider, category);
-    if (files.length === 0) {
-      return [new EmptyItem(`No ${category}`)];
-    }
-
-    return files.map((filePath) => {
-      const name = path.basename(filePath, path.extname(filePath));
-      const fileType = category.slice(0, -1) as 'command' | 'agent';
-      return new SkillItem(name, filePath, fileType, provider.id);
-    });
+    return files.length > 0 ? files.map((f) => new SkillItem(path.basename(f, path.extname(f)), f, category.slice(0, -1) as any, provider.id)) : [new EmptyItem(`No ${category}`)];
   }
 
   private getWorkspacePath(): string | undefined {
-    const folders = vscode.workspace.workspaceFolders;
-    if (folders && folders.length > 0) {
-      return folders[0].uri.fsPath;
-    }
-    return undefined;
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   }
 
   private detectProjectConfigs(workspacePath: string): string[] {
     const configs: string[] = [];
-    const checks = [
-      { name: '.claude', type: 'dir' },
-      { name: '.opencode', type: 'dir' },
-      { name: '.mcp.json', type: 'file' },
-      { name: 'CLAUDE.md', type: 'file' },
-      { name: 'AGENTS.md', type: 'file' },
-    ];
-
+    const checks = [{ name: '.claude', type: 'dir' }, { name: '.opencode', type: 'dir' }, { name: '.mcp.json', type: 'file' }, { name: 'CLAUDE.md', type: 'file' }, { name: 'AGENTS.md', type: 'file' }];
     for (const check of checks) {
       const fullPath = path.join(workspacePath, check.name);
       if (existsSync(fullPath)) {
         try {
           const stat = statSync(fullPath);
-          if ((check.type === 'dir' && stat.isDirectory()) || (check.type === 'file' && stat.isFile())) {
-            configs.push(check.name);
-          }
-        } catch {
-          // Ignore
-        }
+          if ((check.type === 'dir' && stat.isDirectory()) || (check.type === 'file' && stat.isFile())) configs.push(check.name);
+        } catch {}
       }
     }
     return configs;
@@ -425,234 +313,127 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<TreeItem> {
 
   private getProjectConfigChildren(workspacePath: string): TreeItem[] {
     const items: TreeItem[] = [];
-
-    const claudeDir = path.join(workspacePath, '.claude');
-    if (existsSync(claudeDir) && statSync(claudeDir).isDirectory()) {
-      items.push(new ProjectFileItem('.claude/', claudeDir, 'claude-dir'));
-    }
-
-    const opencodeDir = path.join(workspacePath, '.opencode');
-    if (existsSync(opencodeDir) && statSync(opencodeDir).isDirectory()) {
-      items.push(new ProjectFileItem('.opencode/', opencodeDir, 'opencode-dir'));
-    }
-
-    const mcpJson = path.join(workspacePath, '.mcp.json');
-    if (existsSync(mcpJson) && statSync(mcpJson).isFile()) {
-      items.push(new ProjectFileItem('.mcp.json', mcpJson, 'mcp-json'));
-    }
-
-    const claudeMd = path.join(workspacePath, 'CLAUDE.md');
-    if (existsSync(claudeMd) && statSync(claudeMd).isFile()) {
-      items.push(new ProjectFileItem('CLAUDE.md', claudeMd, 'instructions'));
-    }
-
-    const agentsMd = path.join(workspacePath, 'AGENTS.md');
-    if (existsSync(agentsMd) && statSync(agentsMd).isFile()) {
-      items.push(new ProjectFileItem('AGENTS.md', agentsMd, 'instructions'));
-    }
-
-    if (items.length === 0) {
-      return [new EmptyItem('No project configs detected')];
-    }
-    return items;
-  }
-
-  private async getRemoteGistChildren(): Promise<TreeItem[]> {
-    const auth = loadAuth();
-    if (!auth || !auth.gistId || !auth.githubToken) {
-      return [];
-    }
-
-    try {
-      const gist = await getGist(auth.githubToken, auth.gistId);
-      const file = gist.files?.['opencodesync.json'];
-      if (!file?.content) {
-        return [new EmptyItem('No sync data in Gist')];
-      }
-
-      const encrypted = JSON.parse(file.content);
-      const payload = decryptObject<SyncPayload>(encrypted, auth.passphrase);
-
-      const items: TreeItem[] = [];
-
-      if (isPayloadV2(payload)) {
-        for (const [providerId, data] of Object.entries(payload.providers)) {
-          if (data && data.files.length > 0) {
-            items.push(new RemoteProviderItem(providerId as AssistantType, data.files.length));
-          }
-        }
-      } else {
-        if (payload.config.files.length > 0) {
-          items.push(new RemoteProviderItem('opencode', payload.config.files.length));
-        }
-      }
-
-      if (items.length === 0) {
-        return [new EmptyItem('Gist is empty')];
-      }
-
-      return items;
-    } catch (error) {
-      return [new EmptyItem(`Error fetching Gist: ${error instanceof Error ? error.message : 'Unknown'}`)];
-    }
+    const pushIfExist = (name: string, type: any, label: string) => {
+      const fullPath = path.join(workspacePath, name);
+      if (existsSync(fullPath)) items.push(new ProjectFileItem(label, fullPath, type));
+    };
+    pushIfExist('.claude', 'claude-dir', '.claude/');
+    pushIfExist('.opencode', 'opencode-dir', '.opencode/');
+    pushIfExist('.mcp.json', 'mcp-json', '.mcp.json');
+    pushIfExist('CLAUDE.md', 'instructions', 'CLAUDE.md');
+    pushIfExist('AGENTS.md', 'instructions', 'AGENTS.md');
+    return items.length > 0 ? items : [new EmptyItem('No project configs')];
   }
 
   private async getRemoteProviderChildren(providerItem: RemoteProviderItem): Promise<TreeItem[]> {
     const auth = loadAuth();
-    if (!auth || !auth.gistId || !auth.githubToken) return [];
-
+    if (!auth?.githubToken) return [];
     try {
-      const gist = await getGist(auth.githubToken, auth.gistId);
-      const file = gist.files?.['opencodesync.json'];
+      const gist = await getGist(auth.githubToken, providerItem.gistId);
+      const file = gist.files['coding-agent-sync.json'] || gist.files['opencodesync.json'];
       if (!file?.content) return [];
-
-      const encrypted = JSON.parse(file.content);
-      const payload = decryptObject<SyncPayload>(encrypted, auth.passphrase);
-
-      let files: Array<{ path: string }> = [];
-      if (isPayloadV2(payload)) {
-        files = payload.providers[providerItem.providerId]?.files || [];
-      } else if (providerItem.providerId === 'opencode') {
-        files = payload.config.files;
-      }
+      const payload = decryptObject<SyncPayload>(JSON.parse(file.content), auth.passphrase);
+      
+      let files: any[] = [];
+      if (isPayloadV2(payload)) files = payload.providers[providerItem.providerId]?.files || [];
+      else if (providerItem.providerId === 'opencode') files = payload.config.files;
 
       const items: TreeItem[] = [];
       const categories: Record<string, number> = {};
-
-      for (const f of files) {
+      files.forEach(f => {
         let cat = 'other';
-        if (f.path.startsWith('settings.json') || f.path.startsWith('settings.local.json') || f.path.startsWith('opencode.json')) cat = 'settings';
+        if (f.path === 'opencode.json' || f.path === 'settings.json' || f.path === 'settings.local.json' || f.path === '.claude.json') cat = 'settings';
         else if (f.path.startsWith('skill/') || f.path.startsWith('skills/')) cat = 'skills';
         else if (f.path.startsWith('rules/')) cat = 'rules';
         else if (f.path.startsWith('command/')) cat = 'commands';
         else if (f.path.startsWith('agent/')) cat = 'agents';
-
+        else if (f.path.endsWith('.jsonc') || f.path === 'oh-my-opencode.json' || f.path === 'antigravity.json') cat = 'plugins';
         categories[cat] = (categories[cat] || 0) + 1;
-      }
+      });
 
-      if (categories['settings']) items.push(new RemoteCategoryItem('Settings', 'settings', providerItem.providerId, categories['settings']));
-      if (categories['skills']) items.push(new RemoteCategoryItem('Skills', 'skills', providerItem.providerId, categories['skills']));
-      if (categories['rules']) items.push(new RemoteCategoryItem('Rules', 'rules', providerItem.providerId, categories['rules']));
-      if (categories['commands']) items.push(new RemoteCategoryItem('Commands', 'commands', providerItem.providerId, categories['commands']));
-      if (categories['agents']) items.push(new RemoteCategoryItem('Agents', 'agents', providerItem.providerId, categories['agents']));
-
+      const addCat = (label: string, id: any) => {
+        if (categories[id]) items.push(new RemoteCategoryItem(providerItem.gistId, label, id, providerItem.providerId, categories[id]));
+      };
+      addCat('Settings', 'settings');
+      addCat('Plugins', 'plugins');
+      addCat(providerItem.providerId === 'claude-code' ? 'Rules' : 'Skills', providerItem.providerId === 'claude-code' ? 'rules' : 'skills');
+      addCat('Commands', 'commands');
+      addCat('Agents', 'agents');
       return items;
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   }
 
   private async getRemoteCategoryChildren(categoryItem: RemoteCategoryItem): Promise<TreeItem[]> {
     const auth = loadAuth();
-    if (!auth || !auth.gistId || !auth.githubToken) return [];
-
+    if (!auth?.githubToken) return [];
     try {
-      const gist = await getGist(auth.githubToken, auth.gistId);
-      const file = gist.files?.['opencodesync.json'];
+      const gist = await getGist(auth.githubToken, categoryItem.gistId);
+      const file = gist.files['coding-agent-sync.json'] || gist.files['opencodesync.json'];
       if (!file?.content) return [];
-
-      const encrypted = JSON.parse(file.content);
-      const payload = decryptObject<SyncPayload>(encrypted, auth.passphrase);
-
-      let files: Array<{ path: string }> = [];
-      if (isPayloadV2(payload)) {
-        files = payload.providers[categoryItem.providerId]?.files || [];
-      } else if (categoryItem.providerId === 'opencode') {
-        files = payload.config.files;
-      }
+      const payload = decryptObject<SyncPayload>(JSON.parse(file.content), auth.passphrase);
+      let files: any[] = [];
+      if (isPayloadV2(payload)) files = payload.providers[categoryItem.providerId]?.files || [];
+      else if (categoryItem.providerId === 'opencode') files = payload.config.files;
 
       const prefix = this.getPrefixForCategory(categoryItem.category);
-      const filtered = files.filter(f => f.path.startsWith(prefix));
+      const filtered = files.filter(f => {
+        if (categoryItem.category === 'settings') return f.path === 'opencode.json' || f.path === 'settings.json' || f.path === 'settings.local.json' || f.path === '.claude.json';
+        if (categoryItem.category === 'plugins') return f.path.endsWith('.jsonc') || f.path === 'oh-my-opencode.json' || f.path === 'antigravity.json';
+        return f.path.startsWith(prefix);
+      });
 
-      if (categoryItem.category === 'settings') {
+      if (categoryItem.category === 'settings' || categoryItem.category === 'plugins') {
         return filtered.map(f => new RemoteFileItem(path.basename(f.path), f.path, categoryItem.providerId));
       }
 
-      // Group by immediate subfolder under prefix
       const folders = new Set<string>();
-      const rootFiles: Array<{ path: string }> = [];
-
-      for (const f of filtered) {
+      const rootFiles: any[] = [];
+      filtered.forEach(f => {
         const relative = f.path.slice(prefix.length);
         const parts = relative.split('/');
-        if (parts.length > 1) {
-          folders.add(parts[0]);
-        } else if (parts[0]) {
-          rootFiles.push(f);
-        }
-      }
+        if (parts.length > 1) folders.add(parts[0]);
+        else if (parts[0]) rootFiles.push(f);
+      });
 
       const items: TreeItem[] = [];
-      for (const folder of folders) {
-        items.push(new RemoteFolderItem(folder, prefix + folder + '/', categoryItem.providerId, categoryItem.category));
-      }
-      for (const f of rootFiles) {
-        items.push(new RemoteFileItem(path.basename(f.path), f.path, categoryItem.providerId));
-      }
-
+      folders.forEach(f => items.push(new RemoteFolderItem(categoryItem.gistId, f, prefix + f + '/', categoryItem.providerId, categoryItem.category as any)));
+      rootFiles.forEach(f => items.push(new RemoteFileItem(path.basename(f.path), f.path, categoryItem.providerId)));
       return items;
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   }
 
   private getPrefixForCategory(category: string): string {
-    switch (category) {
-      case 'settings': return '';
-      case 'skills': return 'skill/';
-      case 'rules': return 'rules/';
-      case 'commands': return 'command/';
-      case 'agents': return 'agent/';
-      default: return '';
-    }
+    return { settings: '', plugins: '', skills: 'skill/', rules: 'rules/', commands: 'command/', agents: 'agent/' }[category] || '';
   }
 
   private async getRemoteFolderChildren(folderItem: RemoteFolderItem): Promise<TreeItem[]> {
     const auth = loadAuth();
-    if (!auth || !auth.gistId || !auth.githubToken) return [];
-
+    if (!auth?.githubToken) return [];
     try {
-      const gist = await getGist(auth.githubToken, auth.gistId);
-      const file = gist.files?.['opencodesync.json'];
+      const gist = await getGist(auth.githubToken, folderItem.gistId);
+      const file = gist.files['coding-agent-sync.json'] || gist.files['opencodesync.json'];
       if (!file?.content) return [];
-
-      const encrypted = JSON.parse(file.content);
-      const payload = decryptObject<SyncPayload>(encrypted, auth.passphrase);
-
-      let files: Array<{ path: string }> = [];
-      if (isPayloadV2(payload)) {
-        files = payload.providers[folderItem.providerId]?.files || [];
-      } else if (folderItem.providerId === 'opencode') {
-        files = payload.config.files;
-      }
+      const payload = decryptObject<SyncPayload>(JSON.parse(file.content), auth.passphrase);
+      let files: any[] = [];
+      if (isPayloadV2(payload)) files = payload.providers[folderItem.providerId]?.files || [];
+      else if (folderItem.providerId === 'opencode') files = payload.config.files;
 
       const prefix = folderItem.folderPath;
       const filtered = files.filter(f => f.path.startsWith(prefix));
-
       const folders = new Set<string>();
-      const rootFiles: Array<{ path: string }> = [];
+      const rootFiles: any[] = [];
 
-      for (const f of filtered) {
+      filtered.forEach(f => {
         const relative = f.path.slice(prefix.length);
         const parts = relative.split('/');
-        if (parts.length > 1) {
-          folders.add(parts[0]);
-        } else if (parts[0]) {
-          rootFiles.push(f);
-        }
-      }
+        if (parts.length > 1) folders.add(parts[0]);
+        else if (parts[0]) rootFiles.push(f);
+      });
 
       const items: TreeItem[] = [];
-      for (const folder of folders) {
-        items.push(new RemoteFolderItem(folder, prefix + folder + '/', folderItem.providerId, folderItem.category));
-      }
-      for (const f of rootFiles) {
-        items.push(new RemoteFileItem(path.basename(f.path), f.path, folderItem.providerId));
-      }
-
+      folders.forEach(f => items.push(new RemoteFolderItem(folderItem.gistId, f, prefix + f + '/', folderItem.providerId, folderItem.category)));
+      rootFiles.forEach(f => items.push(new RemoteFileItem(path.basename(f.path), f.path, folderItem.providerId)));
       return items;
-    } catch {
-      return [];
-    }
+    } catch { return []; }
   }
 }

@@ -147,6 +147,8 @@ export interface SyncPayloadV2 {
       hash: string;
     };
   };
+  /** Global MCP servers (~/.mcp.json) */
+  mcpServers?: MCPServerConfig[];
   /** Session contexts (OpenCode-specific for now) */
   contexts: {
     items: Array<{

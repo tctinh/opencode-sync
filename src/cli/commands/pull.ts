@@ -3,17 +3,17 @@
  */
 
 import inquirer from "inquirer";
-import { existsSync, readFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import { loadAuth } from "../../storage/auth.js";
 import { getGist } from "../../core/gist.js";
 import { decryptObject } from "../../core/crypto.js";
 import { recordSync } from "../../storage/state.js";
-import { saveContexts, type ContextsStorage, type SessionContext } from "../../storage/contexts.js";
-import { hashContent } from "../../utils/hash.js";
-import { initializeProviders } from "../../providers/registry.js";
-import type { AssistantType, SyncPayloadV1, SyncPayloadV2 } from "../../providers/types.js";
-import { getProvider } from "../../providers/registry.js";
+import { saveContexts } from "../../storage/contexts.js";
+import { initializeProviders, getProvider } from "../../providers/registry.js";
+import type { SyncPayload } from "../../providers/types.js";
+import { isPayloadV2 } from "../../providers/types.js";
 
 interface PullOptions {
   force?: boolean;
@@ -23,150 +23,70 @@ interface PullOptions {
   all?: boolean;
 }
 
-function determineProviders(options: PullOptions): AssistantType[] {
-  if (options.claude) return ['claude-code'];
-  if (options.opencode) return ['opencode'];
-  if (options.all === false) return [];
-  return ['claude-code', 'opencode'];
-}
-
 export async function pullCommand(options: PullOptions): Promise<void> {
   console.log("\n📥 Pulling from GitHub Gist...\n");
 
   await initializeProviders();
 
   const auth = loadAuth();
-  if (!auth) {
-    console.error("✗ Not configured. Run 'coding-agent-sync init' first.");
+  if (!auth?.gistId) {
+    console.error("✗ Not configured or no Gist ID. Run 'coding-agent-sync init' first.");
     process.exit(1);
   }
-
-  if (!auth.gistId) {
-    console.error("✗ No Gist ID found. Run 'coding-agent-sync push' first to create one.");
-    console.error("  Or run 'coding-agent-sync init' to link to an existing Gist.");
-    process.exit(1);
-  }
-
-  const providerIds = determineProviders(options);
 
   console.log("Fetching from GitHub...");
 
   try {
     const gist = await getGist(auth.githubToken, auth.gistId);
-
     const syncFile = gist.files["coding-agent-sync.json"] || gist.files["opencodesync.json"];
+    
     if (!syncFile) {
       console.error("✗ Sync data not found in Gist.");
-      console.error("  The Gist may be empty or corrupted.");
       process.exit(1);
     }
 
     console.log("Decrypting data...");
-    const encrypted = JSON.parse(syncFile.content);
+    const payload = decryptObject<SyncPayload>(JSON.parse(syncFile.content), auth.passphrase);
 
-    let payload: SyncPayloadV1 | SyncPayloadV2;
-    try {
-      payload = decryptObject<SyncPayloadV1 | SyncPayloadV2>(encrypted, auth.passphrase);
-    } catch {
-      console.error("✗ Decryption failed.");
-      console.error("  Check that your passphrase is correct.");
-      process.exit(1);
-    }
-
-    const isV1 = payload.meta.version === 1;
-    const isV2 = payload.meta.version === 2;
-
-    console.log(`✓ Decrypted successfully (v${payload.meta.version})`);
-    console.log(`  Last updated: ${new Date(payload.meta.updatedAt).toLocaleString()}`);
-    console.log(`  Source: ${payload.meta.source}`);
-
-    let filesToPull: Array<{ path: string; content: string; provider?: AssistantType }> = [];
-    let contextsToPull: Array<{ id: string; name: string; summary: string; createdAt: string; project?: string }> = [];
-
-    if (isV1) {
-      const v1Payload = payload as SyncPayloadV1;
-      filesToPull = v1Payload.config.files.map(f => ({ ...f, provider: 'opencode' }));
-      contextsToPull = v1Payload.contexts.items;
-    } else if (isV2) {
-      const v2Payload = payload as SyncPayloadV2;
-
-      for (const providerId of providerIds) {
-        const providerData = v2Payload.providers[providerId];
-        if (providerData) {
-          filesToPull = filesToPull.concat(
-            providerData.files.map(f => ({ ...f, provider: providerId }))
-          );
-        }
-      }
-      contextsToPull = v2Payload.contexts.items;
-    }
-
-    if (filesToPull.length === 0) {
-      console.log("\n✗ No config files to pull for selected providers.");
-      process.exit(1);
-    }
-
-    console.log(`\nConfig files: ${filesToPull.length}`);
-    console.log(`Contexts: ${contextsToPull.length}`);
-
-    if (options.verbose) {
-      console.log("\nFiles to pull:");
-      for (const file of filesToPull) {
-        console.log(`  • ${file.provider || '?'}: ${file.path}`);
-      }
-    }
-
-    const conflicts: Array<{ path: string; provider?: AssistantType }> = [];
-
-    for (const file of filesToPull) {
-      let localPath: string;
-
-      if (file.provider) {
-        const provider = getProvider(file.provider);
-        if (!provider) {
-          console.warn(`⚠️  Unknown provider: ${file.provider}, skipping`);
-          continue;
-        }
-        localPath = join(provider.configDir, file.path);
-      } else {
-        continue;
-      }
-
-      if (existsSync(localPath)) {
-        const localContent = readFileSync(localPath, "utf8");
-        if (localContent !== file.content) {
-          conflicts.push(file);
-        }
-      }
-    }
-
-    if (conflicts.length > 0 && !options.force) {
-      console.log(`\n⚠️  ${conflicts.length} file(s) will be overwritten:`);
-      for (const file of conflicts) {
-        console.log(`  • ${file.provider || '?'}: ${file.path}`);
-      }
-
+    if (!options.force) {
       const { proceed } = await inquirer.prompt([
         {
           type: "confirm",
           name: "proceed",
-          message: "Overwrite local files?",
+          message: "This will REPlACE all your local configurations with the remote version. Proceed?",
           default: false,
         },
       ]);
-
-      if (!proceed) {
-        console.log("\nPull cancelled.");
-        return;
-      }
+      if (!proceed) return;
     }
 
-    console.log("\nWriting config files...");
+    console.log("\nReplacing local configuration...");
     let writtenCount = 0;
 
-    if (isV2) {
-      const v2Payload = payload as SyncPayloadV2;
-      for (const [providerId, providerData] of Object.entries(v2Payload.providers)) {
+    if (isPayloadV2(payload)) {
+      // 1. Replace MCP Servers (~/.mcp.json)
+      if (payload.mcpServers) {
+        const mcpPath = join(homedir(), ".mcp.json");
+        const mcpConfig = { mcpServers: {} as Record<string, any> };
+        
+        for (const server of payload.mcpServers) {
+          const serverConfig: any = { type: server.type };
+          if (server.command) serverConfig.command = server.command;
+          if (server.args) serverConfig.args = server.args;
+          if (server.env) serverConfig.env = server.env;
+          if (server.url) serverConfig.url = server.url;
+          if (server.headers) serverConfig.headers = server.headers;
+          if (server.cwd) serverConfig.cwd = server.cwd;
+          if (server.enabled === false) serverConfig.disabled = true;
+          mcpConfig.mcpServers[server.name] = serverConfig;
+        }
+        
+        writeFileSync(mcpPath, JSON.stringify(mcpConfig, null, 4));
+        console.log("✓ Updated ~/.mcp.json");
+      }
+
+      // 2. Replace Assistant Configs
+      for (const [providerId, providerData] of Object.entries(payload.providers)) {
         if (providerData) {
           const provider = getProvider(providerId as any);
           if (provider) {
@@ -178,53 +98,42 @@ export async function pullCommand(options: PullOptions): Promise<void> {
               }))
             );
             writtenCount += providerData.files.length;
-            if (options.verbose) {
-              console.log(`  ✓ Applied ${providerData.files.length} files for ${providerId}`);
-            }
+            console.log(`✓ Replaced ${providerData.files.length} files for ${providerId}`);
           }
         }
       }
+
+      // 3. Replace Contexts
+      if (payload.contexts) {
+        saveContexts({
+          contexts: payload.contexts.items.map(c => ({ ...c, size: Buffer.byteLength(c.summary) })),
+          version: 1
+        });
+        console.log(`✓ Updated ${payload.contexts.items.length} contexts`);
+      }
     } else {
-      // V1 fallback
+      // V1 Fallback (OpenCode only)
       const opencodeProvider = getProvider('opencode');
       if (opencodeProvider) {
         await opencodeProvider.applyFiles(
-          filesToPull.map(f => ({
+          payload.config.files.map(f => ({
             relativePath: f.path,
             content: f.content,
             hash: "",
           }))
         );
-        writtenCount = filesToPull.length;
+        writtenCount = payload.config.files.length;
+        console.log(`✓ Replaced ${writtenCount} files for opencode`);
       }
+      
+      saveContexts({
+        contexts: payload.contexts.items.map(c => ({ ...c, size: Buffer.byteLength(c.summary) })),
+        version: 1
+      });
     }
 
-    console.log(`✓ Applied ${writtenCount} config files`);
-
-    console.log("\nUpdating contexts...");
-    const contextsStorage: ContextsStorage = {
-      contexts: contextsToPull.map(item => ({
-        id: item.id,
-        name: item.name,
-        summary: item.summary,
-        createdAt: item.createdAt,
-        project: item.project,
-        size: Buffer.byteLength(item.summary, "utf8"),
-      } as SessionContext)),
-      version: 1,
-    };
-    saveContexts(contextsStorage);
-    console.log(`✓ Updated ${contextsToPull.length} contexts`);
-
-    const configHash = isV1 ? (payload as SyncPayloadV1).config.hash : "";
-    const contextsHash = contextsToPull.length > 0
-      ? hashContent(JSON.stringify(contextsToPull))
-      : null;
-
-    recordSync(auth.gistId, configHash, contextsHash);
-
+    recordSync(auth.gistId, isPayloadV2(payload) ? "" : payload.config.hash, null);
     console.log("\n✓ Pull complete!");
-    console.log(`  Updated providers: ${providerIds.join(', ')}`);
 
   } catch (error) {
     console.error("\n✗ Pull failed:", error);

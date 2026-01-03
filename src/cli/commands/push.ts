@@ -5,10 +5,11 @@
 import { loadAuth, updateGistId } from "../../storage/auth.js";
 import { collectFromProviders, getFileStats, formatSize } from "../../core/collector.js";
 import { loadContexts, getContextsHash } from "../../storage/contexts.js";
-import { loadSyncState, recordSync } from "../../storage/state.js";
+import { recordSync } from "../../storage/state.js";
 import { encryptObject } from "../../core/crypto.js";
 import { createGist, updateGist, type GistFile } from "../../core/gist.js";
-import type { AssistantType, SyncPayloadV2 } from "../../providers/types.js";
+import { getGlobalMCPServers } from "../../providers/mcp.js";
+import type { SyncPayloadV2 } from "../../providers/types.js";
 
 interface PushOptions {
   force?: boolean;
@@ -16,15 +17,6 @@ interface PushOptions {
   claude?: boolean;
   opencode?: boolean;
   all?: boolean;
-}
-
-function determineProviders(options: PushOptions): AssistantType[] {
-  if (options.claude) return ['claude-code'];
-  if (options.opencode) return ['opencode'];
-  if (options.all === false) {
-    return [];
-  }
-  return ['claude-code', 'opencode'];
 }
 
 export async function pushCommand(options: PushOptions): Promise<void> {
@@ -36,7 +28,13 @@ export async function pushCommand(options: PushOptions): Promise<void> {
     process.exit(1);
   }
 
-  const providerIds = determineProviders(options);
+  const providerIds: ("claude-code" | "opencode")[] = [];
+  if (options.claude) providerIds.push("claude-code");
+  if (options.opencode) providerIds.push("opencode");
+  if (providerIds.length === 0 || options.all) {
+    providerIds.length = 0;
+    providerIds.push("claude-code", "opencode");
+  }
 
   console.log(`Collecting config files from ${providerIds.length} provider(s)...`);
   const collection = await collectFromProviders({
@@ -58,42 +56,20 @@ export async function pushCommand(options: PushOptions): Promise<void> {
     totalSize += stats.totalSize;
 
     console.log(`✓ ${result.configDir}: ${stats.total} files (${formatSize(stats.totalSize)})`);
-
-    if (options.verbose && stats.total > 0) {
-      console.log(`  • ${stats.configs} config files`);
-      console.log(`  • ${stats.agents} custom agents`);
-      console.log(`  • ${stats.commands} custom commands`);
-      console.log(`  • ${stats.instructions} instruction files`);
-      if (stats.plugins > 0) console.log(`  • ${stats.plugins} plugin configs`);
-      if (stats.skills > 0) console.log(`  • ${stats.skills} skill files`);
-    }
   }
 
-  console.log(`\n✓ Total: ${totalFiles} files (${formatSize(totalSize)})`);
+  const mcpServers = getGlobalMCPServers();
+  console.log(`✓ Global MCP servers: ${mcpServers.length}`);
 
   const contextsStorage = loadContexts();
   const contextsHash = getContextsHash();
   console.log(`✓ Session contexts: ${contextsStorage.contexts.length}`);
 
-  const syncState = loadSyncState();
-  const hasConfigChanges = syncState.configHash !== collection.combinedHash;
-  const hasContextChanges = syncState.contextsHash !== contextsHash;
-
-  if (!hasConfigChanges && !hasContextChanges && !options.force) {
-    console.log("\n✓ No changes to push.");
-    console.log("  Use --force to push anyway.");
-    return;
-  }
-
-  if (options.verbose) {
-    if (hasConfigChanges) console.log("  • Config files changed");
-    if (hasContextChanges) console.log("  • Contexts changed");
-  }
-
   console.log("\nEncrypting data...");
 
   const payload: SyncPayloadV2 = {
     providers: {},
+    mcpServers,
     contexts: {
       items: contextsStorage.contexts.map(c => ({
         id: c.id,
@@ -125,7 +101,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
 
   const gistFiles: GistFile[] = [
     {
-      filename: "coding-agent-sync.json",
+      filename: "opencodesync.json",
       content: JSON.stringify(encrypted, null, 2),
     },
   ];
@@ -156,11 +132,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
     }
 
     recordSync(gistId, collection.combinedHash, contextsHash);
-
     console.log("\n✓ Push complete!");
-    console.log(`  Config files: ${totalFiles}`);
-    console.log(`  Contexts: ${contextsStorage.contexts.length}`);
-    console.log(`  Total size: ${formatSize(Buffer.byteLength(JSON.stringify(encrypted), "utf8"))}`);
 
   } catch (error) {
     console.error("\n✗ Push failed:", error);

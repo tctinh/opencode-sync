@@ -1,20 +1,21 @@
 import * as vscode from 'vscode';
-import type { ConfigTreeProvider } from '../views/TreeProvider';
-import { loadAuth, saveAuth, clearAuth } from '../../storage/auth';
-import { collectFromProviders } from '../../core/collector';
-import { encryptObject, decryptObject } from '../../core/crypto';
-import { createGist, updateGist, getGist, findSyncGist, validateToken } from '../../core/gist';
-import { recordSync } from '../../storage/state';
-import { loadContexts, getContextsHash } from '../../storage/contexts';
-import { getProvider, initializeProviders } from '../../providers/registry';
-import type { SyncPayload, SyncPayloadV2 } from '../../providers/types';
-import { isPayloadV2 } from '../../providers/types';
+import type { ConfigTreeProvider } from '../views/TreeProvider.js';
+import { loadAuth, saveAuth, clearAuth } from '../../storage/auth.js';
+import { collectFromProviders } from '../../core/collector.js';
+import { encryptObject, decryptObject } from '../../core/crypto.js';
+import { createGist, updateGist, getGist, validateToken, listSyncGists } from '../../core/gist.js';
+import { recordSync } from '../../storage/state.js';
+import { loadContexts, getContextsHash, saveContexts } from '../../storage/contexts.js';
+import { getProvider, initializeProviders } from '../../providers/registry.js';
+import { getGlobalMCPServers } from '../../providers/mcp.js';
+import type { SyncPayload, SyncPayloadV2 } from '../../providers/types.js';
+import { isPayloadV2 } from '../../providers/types.js';
+import { RemoteEnvironmentItem } from '../views/TreeItems.js';
 
 export function registerSyncCommands(
   context: vscode.ExtensionContext,
   treeProvider: ConfigTreeProvider
 ): void {
-  // Connect to GitHub
   context.subscriptions.push(
     vscode.commands.registerCommand('codingAgentSync.connect', async () => {
       const token = await vscode.window.showInputBox({
@@ -30,11 +31,8 @@ export function registerSyncCommands(
         },
       });
 
-      if (!token) {
-        return;
-      }
+      if (!token) return;
 
-      // Validate token
       try {
         await vscode.window.withProgress(
           {
@@ -42,7 +40,8 @@ export function registerSyncCommands(
             title: 'Validating GitHub token...',
           },
           async () => {
-            await validateToken(token);
+            const valid = await validateToken(token);
+            if (!valid) throw new Error('Invalid token permissions');
           }
         );
       } catch (error) {
@@ -52,7 +51,6 @@ export function registerSyncCommands(
         return;
       }
 
-      // Get passphrase
       const passphrase = await vscode.window.showInputBox({
         prompt: 'Enter your encryption passphrase',
         placeHolder: 'Your secret passphrase',
@@ -66,33 +64,11 @@ export function registerSyncCommands(
         },
       });
 
-      if (!passphrase) {
-        return;
-      }
+      if (!passphrase) return;
 
-      // Find existing gist
-      let gistId: string | undefined;
-      try {
-        const existingGist = await findSyncGist(token);
-        if (existingGist) {
-          const choice = await vscode.window.showInformationMessage(
-            'Found existing sync gist. Use it?',
-            'Yes',
-            'Create New'
-          );
-          if (choice === 'Yes') {
-            gistId = existingGist.id;
-          }
-        }
-      } catch {
-        // Ignore errors
-      }
-
-      // Save auth
       saveAuth({
         githubToken: token,
         passphrase,
-        gistId,
       });
 
       vscode.window.showInformationMessage('Connected to GitHub successfully!');
@@ -100,7 +76,6 @@ export function registerSyncCommands(
     })
   );
 
-  // Disconnect
   context.subscriptions.push(
     vscode.commands.registerCommand('codingAgentSync.disconnect', async () => {
       const confirm = await vscode.window.showWarningMessage(
@@ -117,190 +92,206 @@ export function registerSyncCommands(
     })
   );
 
-  // Push
   context.subscriptions.push(
     vscode.commands.registerCommand('codingAgentSync.push', async () => {
       const auth = loadAuth();
-      if (!auth) {
+      if (!auth?.githubToken) {
         vscode.window.showErrorMessage('Not connected. Please connect to GitHub first.');
         return;
       }
 
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Pushing to GitHub...',
-          cancellable: false,
-        },
-        async (progress) => {
-          try {
-            progress.report({ message: 'Collecting config files...' });
+      const gists = await listSyncGists(auth.githubToken);
+      const items: (vscode.QuickPickItem & { gistId?: string })[] = [
+        { label: '$(add) Create New Environment...', alwaysShow: true, detail: 'Create a new private Gist for this sync state' },
+        ...gists.map(g => ({
+          label: g.description.split(':').pop()?.trim() || 'Unnamed',
+          detail: `Gist ID: ${g.id}`,
+          description: `Updated: ${new Date(g.updatedAt).toLocaleString()}`,
+          gistId: g.id
+        }))
+      ];
 
-            // Collect from all providers
-            const collection = await collectFromProviders({ installedOnly: true });
-            const contextsStorage = loadContexts();
-            const contextsHash = getContextsHash();
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select target remote environment'
+      });
 
-            const payload: SyncPayloadV2 = {
-              providers: {},
-              contexts: {
-                items: contextsStorage.contexts.map((c) => ({
-                  id: c.id,
-                  name: c.name,
-                  summary: c.summary,
-                  createdAt: c.createdAt,
-                  project: c.project,
-                })),
-                hash: contextsHash,
-              },
-              meta: {
-                version: 2,
-                updatedAt: new Date().toISOString(),
-                source: process.platform,
-              },
-            };
+      if (!selected) return;
 
-            for (const [id, result] of collection.results) {
-              payload.providers[id] = {
-                files: result.files.map((f) => ({
-                  path: f.relativePath,
-                  content: f.content,
-                })),
-                hash: result.combinedHash,
-              };
-            }
+      let targetGistId = selected.gistId;
+      let environmentName = selected.label;
 
-            progress.report({ message: 'Encrypting...' });
-            const encrypted = encryptObject(payload, auth.passphrase);
+      if (!targetGistId) {
+        const name = await vscode.window.showInputBox({
+          prompt: 'Enter environment name',
+          placeHolder: 'e.g. Work, Home, MacBook-Pro',
+          validateInput: (v) => !v ? 'Name is required' : null
+        });
+        if (!name) return;
+        environmentName = name;
+      }
 
-            progress.report({ message: 'Uploading...' });
-            const gistFiles = [
-              {
-                filename: 'opencodesync.json',
-                content: JSON.stringify(encrypted, null, 2),
-              },
-            ];
-
-            let gistId: string;
-            if (auth.gistId) {
-              const gist = await updateGist(
-                auth.githubToken,
-                auth.gistId,
-                'coding-agent-sync - AI coding assistant settings sync',
-                gistFiles
-              );
-              gistId = gist.id;
-            } else {
-              const gist = await createGist(
-                auth.githubToken,
-                'coding-agent-sync - AI coding assistant settings sync',
-                gistFiles
-              );
-              gistId = gist.id;
-              saveAuth({ ...auth, gistId });
-            }
-
-            recordSync(gistId, collection.combinedHash, contextsHash);
-
-            const config = vscode.workspace.getConfiguration('codingAgentSync');
-            if (config.get<boolean>('showNotifications')) {
-              vscode.window.showInformationMessage('Push complete!');
-            }
-
-            treeProvider.refresh();
-          } catch (error) {
-            vscode.window.showErrorMessage(
-              `Push failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-            );
-          }
-        }
-      );
+      await performPush(auth, targetGistId, environmentName, treeProvider);
     })
   );
 
-  // Pull
   context.subscriptions.push(
-    vscode.commands.registerCommand('codingAgentSync.pull', async () => {
+    vscode.commands.registerCommand('codingAgentSync.pushToGist', async (item: RemoteEnvironmentItem) => {
       const auth = loadAuth();
-      if (!auth || !auth.gistId) {
-        vscode.window.showErrorMessage('Not connected or no gist configured.');
-        return;
-      }
+      if (!auth?.githubToken) return;
+      await performPush(auth, item.gistId, item.name, treeProvider);
+    })
+  );
 
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Pulling from GitHub...',
-          cancellable: false,
-        },
-        async (progress) => {
-          try {
-            progress.report({ message: 'Fetching gist...' });
-            const gist = await getGist(auth.githubToken, auth.gistId!);
+  context.subscriptions.push(
+    vscode.commands.registerCommand('codingAgentSync.pullFromGist', async (item: RemoteEnvironmentItem) => {
+      const auth = loadAuth();
+      if (!auth?.githubToken) return;
 
-            const file = gist.files?.['opencodesync.json'];
-            if (!file?.content) {
-              throw new Error('Sync file not found in gist');
-            }
-
-            progress.report({ message: 'Decrypting...' });
-            const encrypted = JSON.parse(file.content);
-            const payload = decryptObject<SyncPayload>(encrypted, auth.passphrase);
-
-            await initializeProviders();
-
-            let fileCount = 0;
-            let contextCount = 0;
-
-            if (isPayloadV2(payload)) {
-              for (const [providerId, providerData] of Object.entries(payload.providers)) {
-                if (providerData) {
-                  const provider = getProvider(providerId as any);
-                  if (provider) {
-                    await provider.applyFiles(
-                      providerData.files.map((f) => ({
-                        relativePath: f.path,
-                        content: f.content,
-                        hash: '',
-                      }))
-                    );
-                    fileCount += providerData.files.length;
-                  }
-                }
-              }
-              contextCount = payload.contexts.items.length;
-              // TODO: Apply contexts when storage/contexts has an apply method
-            } else {
-              const opencodeProvider = getProvider('opencode');
-              if (opencodeProvider) {
-                await opencodeProvider.applyFiles(
-                  payload.config.files.map((f) => ({
-                    relativePath: f.path,
-                    content: f.content,
-                    hash: '',
-                  }))
-                );
-                fileCount = payload.config.files.length;
-              }
-              contextCount = payload.contexts.items.length;
-            }
-
-            const config = vscode.workspace.getConfiguration('codingAgentSync');
-            if (config.get<boolean>('showNotifications')) {
-              vscode.window.showInformationMessage(
-                `Pull complete! Applied ${fileCount} files and ${contextCount} contexts.`
-              );
-            }
-
-            treeProvider.refresh();
-          } catch (error) {
-            vscode.window.showErrorMessage(
-              `Pull failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-            );
-          }
-        }
+      const confirm = await vscode.window.showWarningMessage(
+        `Replace local configuration with data from "${item.name}"?`,
+        { modal: true },
+        'Replace Local'
       );
+
+      if (confirm === 'Replace Local') {
+        await performPull(auth, item.gistId, treeProvider);
+      }
     })
   );
 }
 
+async function performPush(auth: any, gistId: string | undefined, name: string, treeProvider: ConfigTreeProvider) {
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: gistId ? `Updating environment "${name}"...` : `Creating environment "${name}"...`,
+    },
+    async () => {
+      try {
+        const collection = await collectFromProviders({ installedOnly: true });
+        const contextsStorage = loadContexts();
+        const mcpServers = getGlobalMCPServers();
+        const contextsHash = getContextsHash();
+
+        const payload: SyncPayloadV2 = {
+          providers: {},
+          mcpServers,
+          contexts: {
+            items: contextsStorage.contexts.map((c) => ({
+              id: c.id,
+              name: c.name,
+              summary: c.summary,
+              createdAt: c.createdAt,
+              project: c.project,
+            })),
+            hash: contextsHash,
+          },
+          meta: {
+            version: 2,
+            updatedAt: new Date().toISOString(),
+            source: process.platform,
+          },
+        };
+
+        for (const [id, result] of collection.results) {
+          payload.providers[id] = {
+            files: result.files.map((f) => ({ path: f.relativePath, content: f.content })),
+            hash: result.combinedHash,
+          };
+        }
+
+        const encrypted = encryptObject(payload, auth.passphrase);
+        const gistFiles = [{ filename: 'opencodesync.json', content: JSON.stringify(encrypted, null, 2) }];
+
+        let finalGistId = gistId;
+        if (gistId) {
+          await updateGist(auth.githubToken, gistId, `coding-agent-sync: ${name}`, gistFiles);
+        } else {
+          const gist = await createGist(auth.githubToken, `coding-agent-sync: ${name}`, gistFiles);
+          finalGistId = gist.id;
+        }
+
+        recordSync(finalGistId!, collection.combinedHash, contextsHash);
+        vscode.window.showInformationMessage(`Push to "${name}" complete!`);
+        treeProvider.refresh();
+      } catch (error) {
+        vscode.window.showErrorMessage(`Push failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  );
+}
+
+async function performPull(auth: any, gistId: string, treeProvider: ConfigTreeProvider) {
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: 'Pulling configuration...',
+    },
+    async () => {
+      try {
+        const gist = await getGist(auth.githubToken, gistId);
+        const file = gist.files['coding-agent-sync.json'] || gist.files['opencodesync.json'];
+        if (!file?.content) throw new Error('No sync data in Gist');
+
+        const payload = decryptObject<SyncPayload>(JSON.parse(file.content), auth.passphrase);
+        await initializeProviders();
+
+        let fileCount = 0;
+        let configHash = '';
+        let contextsHash = null;
+
+        if (isPayloadV2(payload)) {
+          configHash = ''; // V2 doesn't have a single hash in same way yet
+          contextsHash = payload.contexts.hash;
+          
+          if (payload.mcpServers) {
+            const { writeFileSync } = await import('fs');
+            const { join } = await import('path');
+            const { homedir } = await import('os');
+            const mcpPath = join(homedir(), '.mcp.json');
+            const mcpConfig = { mcpServers: {} as Record<string, any> };
+            payload.mcpServers.forEach(s => {
+              const cfg: any = { type: s.type };
+              if (s.command) cfg.command = s.command;
+              if (s.args) cfg.args = s.args;
+              if (s.env) cfg.env = s.env;
+              if (s.url) cfg.url = s.url;
+              if (s.headers) cfg.headers = s.headers;
+              if (s.cwd) cfg.cwd = s.cwd;
+              if (s.enabled === false) cfg.disabled = true;
+              mcpConfig.mcpServers[s.name] = cfg;
+            });
+            writeFileSync(mcpPath, JSON.stringify(mcpConfig, null, 4));
+          }
+
+          for (const [id, data] of Object.entries(payload.providers)) {
+            const provider = getProvider(id as any);
+            if (provider && data) {
+              await provider.applyFiles(data.files.map(f => ({ relativePath: f.path, content: f.content, hash: '' })));
+              fileCount += data.files.length;
+            }
+          }
+
+          if (payload.contexts) {
+            saveContexts({ contexts: payload.contexts.items.map(c => ({ ...c, size: Buffer.byteLength(c.summary) })), version: 1 });
+          }
+        } else {
+          configHash = payload.config.hash;
+          contextsHash = payload.contexts.hash;
+          const opencode = getProvider('opencode');
+          if (opencode) {
+            await opencode.applyFiles(payload.config.files.map(f => ({ relativePath: f.path, content: f.content, hash: '' })));
+            fileCount = payload.config.files.length;
+          }
+          saveContexts({ contexts: payload.contexts.items.map(c => ({ ...c, size: Buffer.byteLength(c.summary) })), version: 1 });
+        }
+
+        recordSync(gistId, configHash, contextsHash);
+        vscode.window.showInformationMessage('Pull complete! Local environment replaced.');
+        treeProvider.refresh();
+      } catch (error) {
+        vscode.window.showErrorMessage(`Pull failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  );
+}
