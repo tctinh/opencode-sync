@@ -1,7 +1,7 @@
 {
   "name": "coding-agent-sync",
   "displayName": "Coding Agent Sync",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Sync AI coding assistant configs (Claude Code, OpenCode, Codex) across devices via GitHub Gist",
   "publisher": "tctinh",
   "icon": "icon.png",
@@ -60,7 +60,10 @@
     "node": ">=18.0.0",
     "vscode": "^1.85.0"
   },
-  "categories": ["Other", "Machine Learning"],
+  "categories": [
+    "Other",
+    "Machine Learning"
+  ],
   "activationEvents": [
     "onView:codingAgentSyncExplorer",
     "onCommand:codingAgentSync.push",
@@ -94,38 +97,160 @@
       }
     ],
     "commands": [
-      {"command": "codingAgentSync.refresh", "title": "Refresh", "icon": "$(refresh)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.push", "title": "Push to Remote", "icon": "$(cloud-upload)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.pull", "title": "Pull from Remote", "icon": "$(cloud-download)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.connect", "title": "Connect GitHub", "icon": "$(plug)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.disconnect", "title": "Disconnect", "icon": "$(debug-disconnect)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.addMcpServer", "title": "Add MCP Server", "icon": "$(add)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.editMcpServer", "title": "Edit MCP Server", "icon": "$(edit)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.deleteMcpServer", "title": "Delete MCP Server", "icon": "$(trash)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.testMcpServer", "title": "Test MCP Server", "icon": "$(beaker)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.createSkill", "title": "Create Skill/Command", "icon": "$(new-file)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.editSkill", "title": "Edit Skill/Command", "icon": "$(edit)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.deleteSkill", "title": "Delete Skill/Command", "icon": "$(trash)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.openSettings", "title": "Open Settings", "icon": "$(settings-gear)", "category": "Coding Agent Sync"},
-      {"command": "codingAgentSync.openInEditor", "title": "Open in Editor", "icon": "$(go-to-file)", "category": "Coding Agent Sync"}
+      {
+        "command": "codingAgentSync.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.push",
+        "title": "Push to Remote",
+        "icon": "$(cloud-upload)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.pull",
+        "title": "Pull from Remote",
+        "icon": "$(cloud-download)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.connect",
+        "title": "Connect GitHub",
+        "icon": "$(plug)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.disconnect",
+        "title": "Disconnect",
+        "icon": "$(debug-disconnect)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.addMcpServer",
+        "title": "Add MCP Server",
+        "icon": "$(add)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.editMcpServer",
+        "title": "Edit MCP Server",
+        "icon": "$(edit)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.deleteMcpServer",
+        "title": "Delete MCP Server",
+        "icon": "$(trash)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.testMcpServer",
+        "title": "Test MCP Server",
+        "icon": "$(beaker)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.createSkill",
+        "title": "Create Skill/Command",
+        "icon": "$(new-file)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.editSkill",
+        "title": "Edit Skill/Command",
+        "icon": "$(edit)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.deleteSkill",
+        "title": "Delete Skill/Command",
+        "icon": "$(trash)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.openSettings",
+        "title": "Open Settings",
+        "icon": "$(settings-gear)",
+        "category": "Coding Agent Sync"
+      },
+      {
+        "command": "codingAgentSync.openInEditor",
+        "title": "Open in Editor",
+        "icon": "$(go-to-file)",
+        "category": "Coding Agent Sync"
+      }
     ],
     "menus": {
       "view/title": [
-        {"command": "codingAgentSync.push", "when": "view == codingAgentSyncExplorer", "group": "navigation@1"},
-        {"command": "codingAgentSync.pull", "when": "view == codingAgentSyncExplorer", "group": "navigation@2"},
-        {"command": "codingAgentSync.refresh", "when": "view == codingAgentSyncExplorer", "group": "navigation@3"}
+        {
+          "command": "codingAgentSync.push",
+          "when": "view == codingAgentSyncExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codingAgentSync.pull",
+          "when": "view == codingAgentSyncExplorer",
+          "group": "navigation@2"
+        },
+        {
+          "command": "codingAgentSync.refresh",
+          "when": "view == codingAgentSyncExplorer",
+          "group": "navigation@3"
+        }
       ],
       "view/item/context": [
-        {"command": "codingAgentSync.connect", "when": "view == codingAgentSyncExplorer && viewItem == syncStatus-disconnected", "group": "inline@1"},
-        {"command": "codingAgentSync.disconnect", "when": "view == codingAgentSyncExplorer && viewItem == syncStatus-connected", "group": "inline@1"},
-        {"command": "codingAgentSync.addMcpServer", "when": "view == codingAgentSyncExplorer && viewItem == mcpServers", "group": "inline@1"},
-        {"command": "codingAgentSync.editMcpServer", "when": "view == codingAgentSyncExplorer && viewItem == mcpServer", "group": "inline@1"},
-        {"command": "codingAgentSync.deleteMcpServer", "when": "view == codingAgentSyncExplorer && viewItem == mcpServer", "group": "inline@2"},
-        {"command": "codingAgentSync.createSkill", "when": "view == codingAgentSyncExplorer && viewItem =~ /skills|commands|agents|rules/", "group": "inline@1"},
-        {"command": "codingAgentSync.editSkill", "when": "view == codingAgentSyncExplorer && viewItem == skill", "group": "inline@1"},
-        {"command": "codingAgentSync.deleteSkill", "when": "view == codingAgentSyncExplorer && viewItem == skill", "group": "inline@2"},
-        {"command": "codingAgentSync.openSettings", "when": "view == codingAgentSyncExplorer && viewItem == settings", "group": "inline@1"},
-        {"command": "codingAgentSync.openInEditor", "when": "view == codingAgentSyncExplorer && viewItem =~ /skill|settings|config/", "group": "context@1"}
+        {
+          "command": "codingAgentSync.connect",
+          "when": "view == codingAgentSyncExplorer && viewItem == syncStatus-disconnected",
+          "group": "inline@1"
+        },
+        {
+          "command": "codingAgentSync.disconnect",
+          "when": "view == codingAgentSyncExplorer && viewItem == syncStatus-connected",
+          "group": "inline@1"
+        },
+        {
+          "command": "codingAgentSync.addMcpServer",
+          "when": "view == codingAgentSyncExplorer && viewItem == mcpServers",
+          "group": "inline@1"
+        },
+        {
+          "command": "codingAgentSync.editMcpServer",
+          "when": "view == codingAgentSyncExplorer && viewItem == mcpServer",
+          "group": "inline@1"
+        },
+        {
+          "command": "codingAgentSync.deleteMcpServer",
+          "when": "view == codingAgentSyncExplorer && viewItem == mcpServer",
+          "group": "inline@2"
+        },
+        {
+          "command": "codingAgentSync.createSkill",
+          "when": "view == codingAgentSyncExplorer && viewItem =~ /skills|commands|agents|rules/",
+          "group": "inline@1"
+        },
+        {
+          "command": "codingAgentSync.editSkill",
+          "when": "view == codingAgentSyncExplorer && viewItem == skill",
+          "group": "inline@1"
+        },
+        {
+          "command": "codingAgentSync.deleteSkill",
+          "when": "view == codingAgentSyncExplorer && viewItem == skill",
+          "group": "inline@2"
+        },
+        {
+          "command": "codingAgentSync.openSettings",
+          "when": "view == codingAgentSyncExplorer && viewItem == settings",
+          "group": "inline@1"
+        },
+        {
+          "command": "codingAgentSync.openInEditor",
+          "when": "view == codingAgentSyncExplorer && viewItem =~ /skill|settings|config/",
+          "group": "context@1"
+        }
       ]
     },
     "configuration": {
@@ -148,10 +273,17 @@
         },
         "codingAgentSync.enabledProviders": {
           "type": "array",
-          "default": ["claude-code", "opencode"],
+          "default": [
+            "claude-code",
+            "opencode"
+          ],
           "items": {
             "type": "string",
-            "enum": ["claude-code", "opencode", "codex"]
+            "enum": [
+              "claude-code",
+              "opencode",
+              "codex"
+            ]
           },
           "description": "AI assistants to manage"
         }
