@@ -7,7 +7,7 @@ import { CollectedFile } from "../core/collector.js";
 /**
  * Supported AI assistant types
  */
-export type AssistantType = "opencode" | "claude-code" | "codex";
+export type AssistantType = "opencode" | "claude-code" | "codex" | "gemini";
 
 /**
  * MCP server transport type

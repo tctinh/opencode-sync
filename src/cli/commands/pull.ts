@@ -12,7 +12,7 @@ import { decryptObject } from "../../core/crypto.js";
 import { recordSync } from "../../storage/state.js";
 import { saveContexts } from "../../storage/contexts.js";
 import { initializeProviders, getProvider } from "../../providers/registry.js";
-import type { SyncPayload } from "../../providers/types.js";
+import type { SyncPayload, AssistantType } from "../../providers/types.js";
 import { isPayloadV2 } from "../../providers/types.js";
 
 interface PullOptions {
@@ -20,7 +20,22 @@ interface PullOptions {
   verbose?: boolean;
   claude?: boolean;
   opencode?: boolean;
+  codex?: boolean;
+  gemini?: boolean;
   all?: boolean;
+}
+
+function determineProviders(options: PullOptions): AssistantType[] {
+  const ids: AssistantType[] = [];
+  if (options.claude) ids.push("claude-code");
+  if (options.opencode) ids.push("opencode");
+  if (options.codex) ids.push("codex");
+  if (options.gemini) ids.push("gemini");
+  
+  if (ids.length === 0 || options.all) {
+    return ["claude-code", "opencode", "codex", "gemini"];
+  }
+  return ids;
 }
 
 export async function pullCommand(options: PullOptions): Promise<void> {
@@ -33,6 +48,8 @@ export async function pullCommand(options: PullOptions): Promise<void> {
     console.error("✗ Not configured or no Gist ID. Run 'coding-agent-sync init' first.");
     process.exit(1);
   }
+
+  const providerIds = determineProviders(options);
 
   console.log("Fetching from GitHub...");
 
@@ -53,7 +70,7 @@ export async function pullCommand(options: PullOptions): Promise<void> {
         {
           type: "confirm",
           name: "proceed",
-          message: "This will REPlACE all your local configurations with the remote version. Proceed?",
+          message: "This will REPLACE all your local configurations for the selected assistants with the remote version. Proceed?",
           default: false,
         },
       ]);
@@ -86,9 +103,10 @@ export async function pullCommand(options: PullOptions): Promise<void> {
       }
 
       // 2. Replace Assistant Configs
-      for (const [providerId, providerData] of Object.entries(payload.providers)) {
+      for (const providerId of providerIds) {
+        const providerData = payload.providers[providerId];
         if (providerData) {
-          const provider = getProvider(providerId as any);
+          const provider = getProvider(providerId);
           if (provider) {
             await provider.applyFiles(
               providerData.files.map(f => ({
@@ -116,7 +134,7 @@ export async function pullCommand(options: PullOptions): Promise<void> {
       const opencodeProvider = getProvider('opencode');
       if (opencodeProvider) {
         await opencodeProvider.applyFiles(
-          payload.config.files.map(f => ({
+          payload.config.files.map((f) => ({
             relativePath: f.path,
             content: f.content,
             hash: "",

@@ -49,6 +49,8 @@ program
   .option("-v, --verbose", "Show detailed output")
   .option("--claude", "Only sync Claude Code")
   .option("--opencode", "Only sync OpenCode")
+  .option("--codex", "Only sync Codex")
+  .option("--gemini", "Only sync Gemini CLI")
   .option("--all", "Sync all installed assistants (default)")
   .action(pushCommand);
 
@@ -59,6 +61,8 @@ program
   .option("-v, --verbose", "Show detailed output")
   .option("--claude", "Only sync Claude Code")
   .option("--opencode", "Only sync OpenCode")
+  .option("--codex", "Only sync Codex")
+  .option("--gemini", "Only sync Gemini CLI")
   .option("--all", "Sync all installed assistants (default)")
   .action(pullCommand);
 
@@ -68,6 +72,8 @@ program
   .option("-v, --verbose", "Show detailed file list")
   .option("--claude", "Only check Claude Code")
   .option("--opencode", "Only check OpenCode")
+  .option("--codex", "Only check Codex")
+  .option("--gemini", "Only check Gemini CLI")
   .option("--all", "Check all installed assistants (default)")
   .action(statusCommand);
 

@@ -73,7 +73,8 @@ export class AssistantItem extends BaseTreeItem {
     switch (this.providerId) {
       case 'claude-code': return 'hubot';
       case 'opencode': return 'terminal';
-      case 'codex': return 'code';
+      case 'codex': return 'openai';
+      case 'gemini': return 'sparkle';
       default: return 'symbol-misc';
     }
   }
@@ -155,7 +156,7 @@ export class RemoteProviderItem extends BaseTreeItem {
       'remoteProvider'
     );
     this.description = `${fileCount} files`;
-    this.iconPath = new vscode.ThemeIcon(providerId === 'opencode' ? 'terminal' : 'hubot');
+    this.iconPath = new vscode.ThemeIcon(providerId === 'opencode' ? 'terminal' : (providerId === 'claude-code' ? 'hubot' : (providerId === 'codex' ? 'openai' : 'sparkle')));
   }
 }
 

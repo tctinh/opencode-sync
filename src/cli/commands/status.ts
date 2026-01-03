@@ -7,19 +7,28 @@ import { loadSyncState, formatLastSync, hasPendingChanges } from "../../storage/
 import { collectFromProviders, getFileStats, formatSize } from "../../core/collector.js";
 import { loadContexts, getContextsHash } from "../../storage/contexts.js";
 import { initializeProviders } from "../../providers/registry.js";
+import type { AssistantType } from "../../providers/types.js";
 
 interface StatusOptions {
   verbose?: boolean;
   claude?: boolean;
   opencode?: boolean;
+  codex?: boolean;
+  gemini?: boolean;
   all?: boolean;
 }
 
-function determineProviders(options: StatusOptions): ('claude-code' | 'opencode')[] {
-  if (options.claude) return ['claude-code'];
-  if (options.opencode) return ['opencode'];
-  if (options.all === false) return [];
-  return ['claude-code', 'opencode'];
+function determineProviders(options: StatusOptions): AssistantType[] {
+  const ids: AssistantType[] = [];
+  if (options.claude) ids.push("claude-code");
+  if (options.opencode) ids.push("opencode");
+  if (options.codex) ids.push("codex");
+  if (options.gemini) ids.push("gemini");
+  
+  if (ids.length === 0 || options.all) {
+    return ["claude-code", "opencode", "codex", "gemini"];
+  }
+  return ids;
 }
 
 export async function statusCommand(options: StatusOptions): Promise<void> {

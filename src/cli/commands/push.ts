@@ -9,14 +9,29 @@ import { recordSync } from "../../storage/state.js";
 import { encryptObject } from "../../core/crypto.js";
 import { createGist, updateGist, type GistFile } from "../../core/gist.js";
 import { getGlobalMCPServers } from "../../providers/mcp.js";
-import type { SyncPayloadV2 } from "../../providers/types.js";
+import type { AssistantType, SyncPayloadV2 } from "../../providers/types.js";
 
 interface PushOptions {
   force?: boolean;
   verbose?: boolean;
   claude?: boolean;
   opencode?: boolean;
+  codex?: boolean;
+  gemini?: boolean;
   all?: boolean;
+}
+
+function determineProviders(options: PushOptions): AssistantType[] {
+  const ids: AssistantType[] = [];
+  if (options.claude) ids.push("claude-code");
+  if (options.opencode) ids.push("opencode");
+  if (options.codex) ids.push("codex");
+  if (options.gemini) ids.push("gemini");
+  
+  if (ids.length === 0 || options.all) {
+    return ["claude-code", "opencode", "codex", "gemini"];
+  }
+  return ids;
 }
 
 export async function pushCommand(options: PushOptions): Promise<void> {
@@ -28,13 +43,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
     process.exit(1);
   }
 
-  const providerIds: ("claude-code" | "opencode")[] = [];
-  if (options.claude) providerIds.push("claude-code");
-  if (options.opencode) providerIds.push("opencode");
-  if (providerIds.length === 0 || options.all) {
-    providerIds.length = 0;
-    providerIds.push("claude-code", "opencode");
-  }
+  const providerIds = determineProviders(options);
 
   console.log(`Collecting config files from ${providerIds.length} provider(s)...`);
   const collection = await collectFromProviders({

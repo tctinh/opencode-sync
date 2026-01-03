@@ -1,6 +1,8 @@
 import type { AssistantProvider, AssistantType } from "./types.js";
 import { openCodeProvider } from "./opencode.js";
 import { claudeCodeProvider } from "./claude-code.js";
+import { codexProvider } from "./codex.js";
+import { geminiProvider } from "./gemini.js";
 
 class ProviderRegistry {
   private providers = new Map<AssistantType, AssistantProvider>();
@@ -60,6 +62,8 @@ export async function initializeProviders(): Promise<void> {
   if (initialized) return;
   registry.register(openCodeProvider);
   registry.register(claudeCodeProvider);
+  registry.register(codexProvider);
+  registry.register(geminiProvider);
   initialized = true;
 }
 

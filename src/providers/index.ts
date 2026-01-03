@@ -19,3 +19,5 @@ export {
 // Providers
 export { openCodeProvider } from "./opencode.js";
 export { claudeCodeProvider } from "./claude-code.js";
+export { codexProvider } from "./codex.js";
+export { geminiProvider } from "./gemini.js";
