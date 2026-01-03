@@ -93,7 +93,7 @@ export async function pullCommand(options: PullOptions): Promise<void> {
       for (const providerId of providerIds) {
         const providerData = v2Payload.providers[providerId];
         if (providerData) {
-          filesToPush = filesToPull.concat(
+          filesToPull = filesToPull.concat(
             providerData.files.map(f => ({ ...f, provider: providerId }))
           );
         }

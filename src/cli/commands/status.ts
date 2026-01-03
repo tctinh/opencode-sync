@@ -15,7 +15,7 @@ interface StatusOptions {
   all?: boolean;
 }
 
-function determineProviders(options: StatusOptions): string[] {
+function determineProviders(options: StatusOptions): ('claude-code' | 'opencode')[] {
   if (options.claude) return ['claude-code'];
   if (options.opencode) return ['opencode'];
   if (options.all === false) return [];

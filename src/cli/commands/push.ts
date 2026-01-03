@@ -8,7 +8,7 @@ import { loadContexts, getContextsHash } from "../../storage/contexts.js";
 import { loadSyncState, recordSync } from "../../storage/state.js";
 import { encryptObject } from "../../core/crypto.js";
 import { createGist, updateGist, type GistFile } from "../../core/gist.js";
-import type { AssistantType, SyncPayloadV1, SyncPayloadV2 } from "../../providers/types.js";
+import type { AssistantType } from "../../providers/types.js";
 
 interface PushOptions {
   force?: boolean;
@@ -79,7 +79,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
   let totalFiles = 0;
   let totalSize = 0;
 
-  for (const [id, result] of collection.results) {
+  for (const [, result] of collection.results) {
     const stats = getFileStats(result.files);
     totalFiles += stats.total;
     totalSize += stats.totalSize;
@@ -199,7 +199,7 @@ export async function pushCommand(options: PushOptions): Promise<void> {
     console.log("\n✓ Push complete!");
     console.log(`  Config files: ${totalFiles}`);
     console.log(`  Contexts: ${contextsStorage.contexts.length}`);
-    console.log(`  Total size: ${formatSize(Buffer.byteLength(JSON.stringify(encrypted), "utf8")}`);
+    console.log(`  Total size: ${formatSize(Buffer.byteLength(JSON.stringify(encrypted), "utf8"))}`);
 
   } catch (error) {
     console.error("\n✗ Push failed:", error);
