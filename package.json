@@ -4,6 +4,7 @@
   "version": "0.2.0",
   "description": "Sync AI coding assistant configs (Claude Code, OpenCode, Codex) across devices via GitHub Gist",
   "publisher": "tctinh",
+  "icon": "icon.png",
   "type": "module",
   "main": "./out/extension.cjs",
   "types": "./dist/plugin/index.d.ts",

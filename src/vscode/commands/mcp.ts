@@ -178,9 +178,70 @@ export function registerMcpCommands(
         return;
       }
 
-      vscode.window.showInformationMessage(
-        `Testing MCP server "${item.server.name}"... (Not implemented yet)`
-      );
+      const server = item.server;
+      
+      await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: `Testing MCP server "${server.name}"...`,
+        cancellable: true
+      }, async (_progress, token) => {
+        if (token.isCancellationRequested) return;
+        try {
+          if (server.type === 'stdio') {
+            if (!server.command) throw new Error('No command specified');
+            
+            const { spawn } = await import('child_process');
+            const child = spawn(server.command, server.args || [], {
+              env: { ...process.env, ...server.env },
+              cwd: server.cwd || undefined,
+              shell: true
+            });
+
+            return new Promise<void>((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                child.kill();
+                resolve();
+              }, 3000);
+
+              child.on('error', (err) => {
+                clearTimeout(timeout);
+                reject(err);
+              });
+
+              child.on('exit', (code) => {
+                clearTimeout(timeout);
+                if (code !== 0 && code !== null) {
+                  reject(new Error(`Process exited with code ${code}`));
+                } else {
+                  resolve();
+                }
+              });
+              
+              token.onCancellationRequested(() => {
+                clearTimeout(timeout);
+                child.kill();
+                resolve();
+              });
+            });
+          } else {
+            if (!server.url) throw new Error('No URL specified');
+            // Basic reachability check
+            const response = await fetch(server.url, {
+              method: 'GET',
+              headers: server.headers
+            });
+            if (!response.ok && response.status !== 405) { // 405 Method Not Allowed is fine for a health check
+              throw new Error(`Server returned status ${response.status}`);
+            }
+          }
+          vscode.window.showInformationMessage(`✓ MCP server "${server.name}" is reachable!`);
+        } catch (error) {
+          vscode.window.showErrorMessage(
+            `✗ MCP server "${server.name}" test failed: ${error instanceof Error ? error.message : 'Unknown error'}`
+          );
+        }
+      });
     })
   );
 }
+

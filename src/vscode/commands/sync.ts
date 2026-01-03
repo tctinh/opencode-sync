@@ -6,7 +6,9 @@ import { encryptObject, decryptObject } from '../../core/crypto';
 import { createGist, updateGist, getGist, findSyncGist, validateToken } from '../../core/gist';
 import { recordSync } from '../../storage/state';
 import { loadContexts, getContextsHash } from '../../storage/contexts';
-import type { SyncPayloadV1 } from '../../providers/types';
+import { getProvider, initializeProviders } from '../../providers/registry';
+import type { SyncPayload, SyncPayloadV2 } from '../../providers/types';
+import { isPayloadV2 } from '../../providers/types';
 
 export function registerSyncCommands(
   context: vscode.ExtensionContext,
@@ -136,20 +138,11 @@ export function registerSyncCommands(
 
             // Collect from all providers
             const collection = await collectFromProviders({ installedOnly: true });
-
-            // For now, use v1 format for backward compatibility with OpenCode
-            const opencodeResult = collection.results.get('opencode');
             const contextsStorage = loadContexts();
             const contextsHash = getContextsHash();
 
-            const payload: SyncPayloadV1 = {
-              config: {
-                files: opencodeResult?.files.map((f) => ({
-                  path: f.relativePath,
-                  content: f.content,
-                })) || [],
-                hash: opencodeResult?.combinedHash || '',
-              },
+            const payload: SyncPayloadV2 = {
+              providers: {},
               contexts: {
                 items: contextsStorage.contexts.map((c) => ({
                   id: c.id,
@@ -161,11 +154,21 @@ export function registerSyncCommands(
                 hash: contextsHash,
               },
               meta: {
-                version: 1,
+                version: 2,
                 updatedAt: new Date().toISOString(),
                 source: process.platform,
               },
             };
+
+            for (const [id, result] of collection.results) {
+              payload.providers[id] = {
+                files: result.files.map((f) => ({
+                  path: f.relativePath,
+                  content: f.content,
+                })),
+                hash: result.combinedHash,
+              };
+            }
 
             progress.report({ message: 'Encrypting...' });
             const encrypted = encryptObject(payload, auth.passphrase);
@@ -183,21 +186,21 @@ export function registerSyncCommands(
               const gist = await updateGist(
                 auth.githubToken,
                 auth.gistId,
-                'opencodesync - OpenCode settings sync',
+                'coding-agent-sync - AI coding assistant settings sync',
                 gistFiles
               );
               gistId = gist.id;
             } else {
               const gist = await createGist(
                 auth.githubToken,
-                'opencodesync - OpenCode settings sync',
+                'coding-agent-sync - AI coding assistant settings sync',
                 gistFiles
               );
               gistId = gist.id;
               saveAuth({ ...auth, gistId });
             }
 
-            recordSync(gistId, opencodeResult?.combinedHash || '', contextsHash);
+            recordSync(gistId, collection.combinedHash, contextsHash);
 
             const config = vscode.workspace.getConfiguration('codingAgentSync');
             if (config.get<boolean>('showNotifications')) {
@@ -242,18 +245,50 @@ export function registerSyncCommands(
 
             progress.report({ message: 'Decrypting...' });
             const encrypted = JSON.parse(file.content);
-            const payload = decryptObject<SyncPayloadV1>(encrypted, auth.passphrase);
+            const payload = decryptObject<SyncPayload>(encrypted, auth.passphrase);
 
-            progress.report({ message: 'Applying changes...' });
+            await initializeProviders();
 
-            // For now, just show what would be applied
-            const fileCount = payload.config.files.length;
-            const contextCount = payload.contexts.items.length;
+            let fileCount = 0;
+            let contextCount = 0;
+
+            if (isPayloadV2(payload)) {
+              for (const [providerId, providerData] of Object.entries(payload.providers)) {
+                if (providerData) {
+                  const provider = getProvider(providerId as any);
+                  if (provider) {
+                    await provider.applyFiles(
+                      providerData.files.map((f) => ({
+                        relativePath: f.path,
+                        content: f.content,
+                        hash: '',
+                      }))
+                    );
+                    fileCount += providerData.files.length;
+                  }
+                }
+              }
+              contextCount = payload.contexts.items.length;
+              // TODO: Apply contexts when storage/contexts has an apply method
+            } else {
+              const opencodeProvider = getProvider('opencode');
+              if (opencodeProvider) {
+                await opencodeProvider.applyFiles(
+                  payload.config.files.map((f) => ({
+                    relativePath: f.path,
+                    content: f.content,
+                    hash: '',
+                  }))
+                );
+                fileCount = payload.config.files.length;
+              }
+              contextCount = payload.contexts.items.length;
+            }
 
             const config = vscode.workspace.getConfiguration('codingAgentSync');
             if (config.get<boolean>('showNotifications')) {
               vscode.window.showInformationMessage(
-                `Pull complete! Found ${fileCount} files and ${contextCount} contexts.`
+                `Pull complete! Applied ${fileCount} files and ${contextCount} contexts.`
               );
             }
 
@@ -268,3 +303,4 @@ export function registerSyncCommands(
     })
   );
 }
+

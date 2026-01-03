@@ -3,8 +3,8 @@
  */
 
 import inquirer from "inquirer";
-import { writeFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { loadAuth } from "../../storage/auth.js";
 import { getGist } from "../../core/gist.js";
 import { decryptObject } from "../../core/crypto.js";
@@ -164,31 +164,42 @@ export async function pullCommand(options: PullOptions): Promise<void> {
     console.log("\nWriting config files...");
     let writtenCount = 0;
 
-    for (const file of filesToPull) {
-      if (!file.provider) continue;
-
-      const provider = getProvider(file.provider);
-      if (!provider) {
-        console.warn(`⚠️  Unknown provider: ${file.provider}, skipping`);
-        continue;
+    if (isV2) {
+      const v2Payload = payload as SyncPayloadV2;
+      for (const [providerId, providerData] of Object.entries(v2Payload.providers)) {
+        if (providerData) {
+          const provider = getProvider(providerId as any);
+          if (provider) {
+            await provider.applyFiles(
+              providerData.files.map(f => ({
+                relativePath: f.path,
+                content: f.content,
+                hash: "",
+              }))
+            );
+            writtenCount += providerData.files.length;
+            if (options.verbose) {
+              console.log(`  ✓ Applied ${providerData.files.length} files for ${providerId}`);
+            }
+          }
+        }
       }
-
-      const localPath = join(provider.configDir, file.path);
-      const dir = dirname(localPath);
-
-      if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true });
-      }
-
-      writeFileSync(localPath, file.content, "utf8");
-      writtenCount++;
-
-      if (options.verbose) {
-        console.log(`  ✓ ${file.provider}: ${file.path}`);
+    } else {
+      // V1 fallback
+      const opencodeProvider = getProvider('opencode');
+      if (opencodeProvider) {
+        await opencodeProvider.applyFiles(
+          filesToPull.map(f => ({
+            relativePath: f.path,
+            content: f.content,
+            hash: "",
+          }))
+        );
+        writtenCount = filesToPull.length;
       }
     }
 
-    console.log(`✓ Wrote ${writtenCount} config files`);
+    console.log(`✓ Applied ${writtenCount} config files`);
 
     console.log("\nUpdating contexts...");
     const contextsStorage: ContextsStorage = {

@@ -8,7 +8,7 @@ import { loadContexts, getContextsHash } from "../../storage/contexts.js";
 import { loadSyncState, recordSync } from "../../storage/state.js";
 import { encryptObject } from "../../core/crypto.js";
 import { createGist, updateGist, type GistFile } from "../../core/gist.js";
-import type { AssistantType } from "../../providers/types.js";
+import type { AssistantType, SyncPayloadV2 } from "../../providers/types.js";
 
 interface PushOptions {
   force?: boolean;
@@ -16,33 +16,6 @@ interface PushOptions {
   claude?: boolean;
   opencode?: boolean;
   all?: boolean;
-}
-
-interface SyncPayloadV2Internal {
-  providers: {
-    [key in AssistantType]?: {
-      files: Array<{
-        path: string;
-        content: string;
-      }>;
-      hash: string;
-    };
-  };
-  contexts: {
-    items: Array<{
-      id: string;
-      name: string;
-      summary: string;
-      createdAt: string;
-      project?: string;
-    }>;
-    hash: string | null;
-  };
-  meta: {
-    version: 2;
-    updatedAt: string;
-    source: string;
-  };
 }
 
 function determineProviders(options: PushOptions): AssistantType[] {
@@ -119,30 +92,8 @@ export async function pushCommand(options: PushOptions): Promise<void> {
 
   console.log("\nEncrypting data...");
 
-  const opencodeResult = collection.results.get('opencode');
-  const claudeResult = collection.results.get('claude-code');
-
-  const payloadV2: SyncPayloadV2Internal = {
-    providers: {
-      ...(opencodeResult && {
-        opencode: {
-          files: opencodeResult.files.map(f => ({
-            path: f.relativePath,
-            content: f.content,
-          })),
-          hash: opencodeResult.combinedHash,
-        },
-      }),
-      ...(claudeResult && {
-        'claude-code': {
-          files: claudeResult.files.map(f => ({
-            path: f.relativePath,
-            content: f.content,
-          })),
-          hash: claudeResult.combinedHash,
-        },
-      }),
-    },
+  const payload: SyncPayloadV2 = {
+    providers: {},
     contexts: {
       items: contextsStorage.contexts.map(c => ({
         id: c.id,
@@ -160,7 +111,17 @@ export async function pushCommand(options: PushOptions): Promise<void> {
     },
   };
 
-  const encrypted = encryptObject(payloadV2, auth.passphrase);
+  for (const [id, result] of collection.results) {
+    payload.providers[id] = {
+      files: result.files.map(f => ({
+        path: f.relativePath,
+        content: f.content,
+      })),
+      hash: result.combinedHash,
+    };
+  }
+
+  const encrypted = encryptObject(payload, auth.passphrase);
 
   const gistFiles: GistFile[] = [
     {

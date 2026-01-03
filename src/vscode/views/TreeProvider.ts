@@ -15,13 +15,20 @@ import {
   SkillItem,
   ProjectConfigItem,
   ProjectFileItem,
+  RemoteProviderItem,
+  RemoteCategoryItem,
+  RemoteFolderItem,
+  RemoteFileItem,
   EmptyItem,
 } from './TreeItems';
 import { getInstalledProviders, initializeProviders } from '../../providers/registry';
 import { getGlobalMCPServers } from '../../providers/mcp';
-import type { AssistantProvider, AssistantType } from '../../providers/types';
+import type { AssistantProvider, AssistantType, SyncPayload } from '../../providers/types';
+import { isPayloadV2 } from '../../providers/types';
 import { loadAuth } from '../../storage/auth';
 import { loadSyncState, formatLastSync } from '../../storage/state';
+import { getGist } from '../../core/gist';
+import { decryptObject } from '../../core/crypto';
 
 type TreeItem = BaseTreeItem | vscode.TreeItem;
 
@@ -64,6 +71,22 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<TreeItem> {
 
     if (!element) {
       return this.getRootItems();
+    }
+
+    if (element instanceof SyncStatusItem) {
+      return this.getRemoteGistChildren();
+    }
+
+    if (element instanceof RemoteProviderItem) {
+      return this.getRemoteProviderChildren(element);
+    }
+
+    if (element instanceof RemoteCategoryItem) {
+      return this.getRemoteCategoryChildren(element);
+    }
+
+    if (element instanceof RemoteFolderItem) {
+      return this.getRemoteFolderChildren(element);
     }
 
     if (element instanceof GlobalMCPItem) {
@@ -432,5 +455,204 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<TreeItem> {
       return [new EmptyItem('No project configs detected')];
     }
     return items;
+  }
+
+  private async getRemoteGistChildren(): Promise<TreeItem[]> {
+    const auth = loadAuth();
+    if (!auth || !auth.gistId || !auth.githubToken) {
+      return [];
+    }
+
+    try {
+      const gist = await getGist(auth.githubToken, auth.gistId);
+      const file = gist.files?.['opencodesync.json'];
+      if (!file?.content) {
+        return [new EmptyItem('No sync data in Gist')];
+      }
+
+      const encrypted = JSON.parse(file.content);
+      const payload = decryptObject<SyncPayload>(encrypted, auth.passphrase);
+
+      const items: TreeItem[] = [];
+
+      if (isPayloadV2(payload)) {
+        for (const [providerId, data] of Object.entries(payload.providers)) {
+          if (data && data.files.length > 0) {
+            items.push(new RemoteProviderItem(providerId as AssistantType, data.files.length));
+          }
+        }
+      } else {
+        if (payload.config.files.length > 0) {
+          items.push(new RemoteProviderItem('opencode', payload.config.files.length));
+        }
+      }
+
+      if (items.length === 0) {
+        return [new EmptyItem('Gist is empty')];
+      }
+
+      return items;
+    } catch (error) {
+      return [new EmptyItem(`Error fetching Gist: ${error instanceof Error ? error.message : 'Unknown'}`)];
+    }
+  }
+
+  private async getRemoteProviderChildren(providerItem: RemoteProviderItem): Promise<TreeItem[]> {
+    const auth = loadAuth();
+    if (!auth || !auth.gistId || !auth.githubToken) return [];
+
+    try {
+      const gist = await getGist(auth.githubToken, auth.gistId);
+      const file = gist.files?.['opencodesync.json'];
+      if (!file?.content) return [];
+
+      const encrypted = JSON.parse(file.content);
+      const payload = decryptObject<SyncPayload>(encrypted, auth.passphrase);
+
+      let files: Array<{ path: string }> = [];
+      if (isPayloadV2(payload)) {
+        files = payload.providers[providerItem.providerId]?.files || [];
+      } else if (providerItem.providerId === 'opencode') {
+        files = payload.config.files;
+      }
+
+      const items: TreeItem[] = [];
+      const categories: Record<string, number> = {};
+
+      for (const f of files) {
+        let cat = 'other';
+        if (f.path.startsWith('settings.json') || f.path.startsWith('settings.local.json') || f.path.startsWith('opencode.json')) cat = 'settings';
+        else if (f.path.startsWith('skill/') || f.path.startsWith('skills/')) cat = 'skills';
+        else if (f.path.startsWith('rules/')) cat = 'rules';
+        else if (f.path.startsWith('command/')) cat = 'commands';
+        else if (f.path.startsWith('agent/')) cat = 'agents';
+
+        categories[cat] = (categories[cat] || 0) + 1;
+      }
+
+      if (categories['settings']) items.push(new RemoteCategoryItem('Settings', 'settings', providerItem.providerId, categories['settings']));
+      if (categories['skills']) items.push(new RemoteCategoryItem('Skills', 'skills', providerItem.providerId, categories['skills']));
+      if (categories['rules']) items.push(new RemoteCategoryItem('Rules', 'rules', providerItem.providerId, categories['rules']));
+      if (categories['commands']) items.push(new RemoteCategoryItem('Commands', 'commands', providerItem.providerId, categories['commands']));
+      if (categories['agents']) items.push(new RemoteCategoryItem('Agents', 'agents', providerItem.providerId, categories['agents']));
+
+      return items;
+    } catch {
+      return [];
+    }
+  }
+
+  private async getRemoteCategoryChildren(categoryItem: RemoteCategoryItem): Promise<TreeItem[]> {
+    const auth = loadAuth();
+    if (!auth || !auth.gistId || !auth.githubToken) return [];
+
+    try {
+      const gist = await getGist(auth.githubToken, auth.gistId);
+      const file = gist.files?.['opencodesync.json'];
+      if (!file?.content) return [];
+
+      const encrypted = JSON.parse(file.content);
+      const payload = decryptObject<SyncPayload>(encrypted, auth.passphrase);
+
+      let files: Array<{ path: string }> = [];
+      if (isPayloadV2(payload)) {
+        files = payload.providers[categoryItem.providerId]?.files || [];
+      } else if (categoryItem.providerId === 'opencode') {
+        files = payload.config.files;
+      }
+
+      const prefix = this.getPrefixForCategory(categoryItem.category);
+      const filtered = files.filter(f => f.path.startsWith(prefix));
+
+      if (categoryItem.category === 'settings') {
+        return filtered.map(f => new RemoteFileItem(path.basename(f.path), f.path, categoryItem.providerId));
+      }
+
+      // Group by immediate subfolder under prefix
+      const folders = new Set<string>();
+      const rootFiles: Array<{ path: string }> = [];
+
+      for (const f of filtered) {
+        const relative = f.path.slice(prefix.length);
+        const parts = relative.split('/');
+        if (parts.length > 1) {
+          folders.add(parts[0]);
+        } else if (parts[0]) {
+          rootFiles.push(f);
+        }
+      }
+
+      const items: TreeItem[] = [];
+      for (const folder of folders) {
+        items.push(new RemoteFolderItem(folder, prefix + folder + '/', categoryItem.providerId, categoryItem.category));
+      }
+      for (const f of rootFiles) {
+        items.push(new RemoteFileItem(path.basename(f.path), f.path, categoryItem.providerId));
+      }
+
+      return items;
+    } catch {
+      return [];
+    }
+  }
+
+  private getPrefixForCategory(category: string): string {
+    switch (category) {
+      case 'settings': return '';
+      case 'skills': return 'skill/';
+      case 'rules': return 'rules/';
+      case 'commands': return 'command/';
+      case 'agents': return 'agent/';
+      default: return '';
+    }
+  }
+
+  private async getRemoteFolderChildren(folderItem: RemoteFolderItem): Promise<TreeItem[]> {
+    const auth = loadAuth();
+    if (!auth || !auth.gistId || !auth.githubToken) return [];
+
+    try {
+      const gist = await getGist(auth.githubToken, auth.gistId);
+      const file = gist.files?.['opencodesync.json'];
+      if (!file?.content) return [];
+
+      const encrypted = JSON.parse(file.content);
+      const payload = decryptObject<SyncPayload>(encrypted, auth.passphrase);
+
+      let files: Array<{ path: string }> = [];
+      if (isPayloadV2(payload)) {
+        files = payload.providers[folderItem.providerId]?.files || [];
+      } else if (folderItem.providerId === 'opencode') {
+        files = payload.config.files;
+      }
+
+      const prefix = folderItem.folderPath;
+      const filtered = files.filter(f => f.path.startsWith(prefix));
+
+      const folders = new Set<string>();
+      const rootFiles: Array<{ path: string }> = [];
+
+      for (const f of filtered) {
+        const relative = f.path.slice(prefix.length);
+        const parts = relative.split('/');
+        if (parts.length > 1) {
+          folders.add(parts[0]);
+        } else if (parts[0]) {
+          rootFiles.push(f);
+        }
+      }
+
+      const items: TreeItem[] = [];
+      for (const folder of folders) {
+        items.push(new RemoteFolderItem(folder, prefix + folder + '/', folderItem.providerId, folderItem.category));
+      }
+      for (const f of rootFiles) {
+        items.push(new RemoteFileItem(path.basename(f.path), f.path, folderItem.providerId));
+      }
+
+      return items;
+    } catch {
+      return [];
+    }
   }
 }

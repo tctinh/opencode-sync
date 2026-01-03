@@ -20,7 +20,7 @@ export class SyncStatusItem extends BaseTreeItem {
   ) {
     super(
       isConnected ? 'Connected' : 'Not Connected',
-      vscode.TreeItemCollapsibleState.None,
+      isConnected ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
       isConnected ? 'syncStatus-connected' : 'syncStatus-disconnected'
     );
 
@@ -319,5 +319,73 @@ export class EmptyItem extends BaseTreeItem {
   constructor(message: string) {
     super(message, vscode.TreeItemCollapsibleState.None, 'empty');
     this.iconPath = new vscode.ThemeIcon('info');
+  }
+}
+
+export class RemoteProviderItem extends BaseTreeItem {
+  constructor(
+    public readonly providerId: AssistantType,
+    public readonly fileCount: number
+  ) {
+    super(
+      providerId === 'opencode' ? 'OpenCode (Remote)' : 'Claude Code (Remote)',
+      vscode.TreeItemCollapsibleState.Collapsed,
+      'remoteProvider'
+    );
+    this.description = `${fileCount} files`;
+    this.iconPath = new vscode.ThemeIcon('cloud');
+  }
+}
+
+export class RemoteCategoryItem extends BaseTreeItem {
+  constructor(
+    label: string,
+    public readonly category: 'settings' | 'skills' | 'rules' | 'commands' | 'agents',
+    public readonly providerId: AssistantType,
+    public readonly itemCount: number
+  ) {
+    super(
+      label,
+      vscode.TreeItemCollapsibleState.Collapsed,
+      'remoteCategory'
+    );
+    this.description = `${itemCount}`;
+    this.iconPath = new vscode.ThemeIcon(this.getIcon());
+  }
+
+  private getIcon(): string {
+    switch (this.category) {
+      case 'settings': return 'settings-gear';
+      case 'commands': return 'terminal';
+      case 'agents': return 'person';
+      case 'skills':
+      case 'rules': return 'lightbulb';
+      default: return 'folder';
+    }
+  }
+}
+
+export class RemoteFolderItem extends BaseTreeItem {
+  constructor(
+    public readonly folderName: string,
+    public readonly folderPath: string,
+    public readonly providerId: AssistantType,
+    public readonly category: 'skills' | 'rules' | 'commands' | 'agents'
+  ) {
+    super(folderName, vscode.TreeItemCollapsibleState.Collapsed, 'remoteFolder');
+    this.iconPath = new vscode.ThemeIcon('folder');
+    this.tooltip = `Remote folder: ${folderPath}`;
+  }
+}
+
+export class RemoteFileItem extends BaseTreeItem {
+  constructor(
+    public readonly fileName: string,
+    public readonly relativePath: string,
+    public readonly providerId: AssistantType
+  ) {
+    super(fileName, vscode.TreeItemCollapsibleState.None, 'remoteFile');
+    this.iconPath = new vscode.ThemeIcon('file-code');
+    this.tooltip = `Remote file: ${relativePath}`;
   }
 }
