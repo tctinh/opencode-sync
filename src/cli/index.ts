@@ -31,8 +31,8 @@ import { statusCommand } from "./commands/status.js";
 const program = new Command();
 
 program
-  .name("opencodesync")
-  .description("Sync your OpenCode settings across devices via GitHub Gist")
+  .name("coding-agent-sync")
+  .description("Sync AI coding assistant configs (Claude Code, OpenCode) across devices via GitHub Gist")
   .version(version);
 
 // Register commands
@@ -47,6 +47,9 @@ program
   .description("Push local config files to GitHub Gist")
   .option("-f, --force", "Push even if no changes detected")
   .option("-v, --verbose", "Show detailed output")
+  .option("--claude", "Only sync Claude Code")
+  .option("--opencode", "Only sync OpenCode")
+  .option("--all", "Sync all installed assistants (default)")
   .action(pushCommand);
 
 program
@@ -54,12 +57,18 @@ program
   .description("Pull config files from GitHub Gist")
   .option("-f, --force", "Overwrite local files without confirmation")
   .option("-v, --verbose", "Show detailed output")
+  .option("--claude", "Only sync Claude Code")
+  .option("--opencode", "Only sync OpenCode")
+  .option("--all", "Sync all installed assistants (default)")
   .action(pullCommand);
 
 program
   .command("status")
   .description("Show sync status and pending changes")
   .option("-v, --verbose", "Show detailed file list")
+  .option("--claude", "Only check Claude Code")
+  .option("--opencode", "Only check OpenCode")
+  .option("--all", "Check all installed assistants (default)")
   .action(statusCommand);
 
 // Parse and run

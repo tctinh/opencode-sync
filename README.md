@@ -1,48 +1,59 @@
 <p align="center">
-  <img src="https://img.shields.io/npm/v/opencodesync.svg?style=flat-square&color=blue" alt="npm version" />
-  <img src="https://img.shields.io/npm/dm/opencodesync.svg?style=flat-square&color=green" alt="downloads" />
+  <img src="https://img.shields.io/npm/v/coding-agent-sync.svg?style=flat-square&color=blue" alt="npm version" />
+  <img src="https://img.shields.io/npm/dm/coding-agent-sync.svg?style=flat-square&color=green" alt="downloads" />
   <img src="https://img.shields.io/badge/license-MIT-yellow.svg?style=flat-square" alt="license" />
 </p>
 
-<h1 align="center">opencodesync</h1>
+<h1 align="center">coding-agent-sync</h1>
 
 <p align="center">
-  <strong>Start coding on your laptop. Continue on your desktop. Never lose context.</strong>
+  <strong>Sync your AI coding assistant configs across all your devices.</strong>
 </p>
 
 <p align="center">
-  Seamlessly sync your OpenCode settings, custom agents, and AI session contexts across all your devices.
+  Seamlessly sync settings, MCP servers, custom agents, skills, and session contexts for Claude Code, OpenCode, and more.
 </p>
 
 ---
 
-## The Problem
+## Supported AI Assistants
 
-You're deep in a coding session on your work machine. You've built up context with your AI assistant - it understands your architecture, your decisions, your next steps. Then you need to switch to your home computer.
-
-**Without opencodesync:** Start from scratch. Re-explain everything. Lose momentum.
-
-**With opencodesync:** One command. Full context restored. Keep building.
+| Assistant | Config Location | Status |
+|-----------|-----------------|--------|
+| **Claude Code** | `~/.claude/` | ✅ Supported |
+| **OpenCode** | `~/.config/opencode/` | ✅ Supported |
+| **OpenAI Codex** | `~/.codex/` | 🔜 Coming soon |
 
 ---
 
 ## Quick Start
 
 ```bash
-npm install -g opencodesync
-opencodesync init
+npm install -g coding-agent-sync
+coding-agent-sync init
 ```
 
 That's it. The wizard walks you through setup and automatically syncs your settings.
 
-**First device?** → Creates a new Gist and offers to push your current config  
+**First device?** → Creates a new Gist and offers to push your current config
 **Second device?** → Finds your existing Gist and offers to pull everything down
 
 ---
 
-## What You Get
+## What Gets Synced
 
-### Sync Your Entire Setup
+### Claude Code (`~/.claude/`)
+
+| What | Synced |
+|------|--------|
+| Settings (`settings.json`) | ✅ |
+| MCP servers (`~/.claude.json`) | ✅ |
+| Custom commands (`commands/*.md`) | ✅ |
+| Custom agents (`agents/*.md`) | ✅ |
+| Rules/Skills (`rules/*.md`) | ✅ |
+| Global instructions (`CLAUDE.md`) | ✅ |
+
+### OpenCode (`~/.config/opencode/`)
 
 | What | Synced |
 |------|--------|
@@ -50,29 +61,9 @@ That's it. The wizard walks you through setup and automatically syncs your setti
 | Custom agents (`agent/*.md`) | ✅ |
 | Custom commands (`command/*.md`) | ✅ |
 | Global instructions (`AGENTS.md`) | ✅ |
-| Plugin configs (`*.jsonc`, `oh-my-opencode.json`) | ✅ |
-| Skills directory (`skills/**`) | ✅ |
+| Plugin configs (`*.jsonc`) | ✅ |
+| Skills directory (`skill/**`) | ✅ |
 | Session contexts | ✅ |
-
-### Never Lose Your AI Context
-
-Export your session before switching devices:
-```
-/context-export "Auth Implementation" --guidance "focus on OAuth decisions"
-```
-
-Resume on any machine:
-```
-/context-import "Auth Implementation"
-```
-
-Your AI picks up exactly where you left off.
-
-### Bank-Grade Security
-
-- **AES-256-GCM encryption** - Your data is encrypted before it leaves your machine
-- **Private GitHub Gists** - Only you can access your sync storage
-- **Zero plaintext** - Even if someone gets your Gist, they can't read it without your passphrase
 
 ---
 
@@ -80,16 +71,16 @@ Your AI picks up exactly where you left off.
 
 **Morning at the office:**
 ```bash
-opencodesync pull                    # Get latest from home
+coding-agent-sync pull                    # Get latest from home
 # ... work on features ...
-/context-export "Feature Progress"   # Save your context
-opencodesync push                    # Sync to cloud
+/context-export "Feature Progress"        # Save your context (OpenCode)
+coding-agent-sync push                    # Sync to cloud
 ```
 
 **Evening at home:**
 ```bash
-opencodesync pull                    # Get settings + context
-/context-import "Feature Progress"   # Resume with full context
+coding-agent-sync pull                    # Get settings + context
+/context-import "Feature Progress"        # Resume with full context
 # ... continue seamlessly ...
 ```
 
@@ -99,16 +90,23 @@ opencodesync pull                    # Get settings + context
 
 | Command | What it does |
 |---------|--------------|
-| `opencodesync init` | Set up GitHub token and encryption passphrase |
-| `opencodesync push` | Upload your settings to the cloud |
-| `opencodesync pull` | Download settings from the cloud |
-| `opencodesync status` | Check what's changed since last sync |
+| `coding-agent-sync init` | Set up GitHub token and encryption passphrase |
+| `coding-agent-sync push` | Upload your settings to the cloud |
+| `coding-agent-sync pull` | Download settings from the cloud |
+| `coding-agent-sync status` | Check what's changed since last sync |
 
-Use `--verbose` on any command for detailed output.
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--all` | Sync all installed assistants (default) |
+| `--claude` | Only sync Claude Code |
+| `--opencode` | Only sync OpenCode |
+| `--verbose` | Show detailed output |
 
 ---
 
-## Plugin Commands (inside OpenCode)
+## OpenCode Plugin Commands
 
 | Command | What it does |
 |---------|--------------|
@@ -119,21 +117,23 @@ Use `--verbose` on any command for detailed output.
 
 ---
 
-## Privacy First
+## Security
 
-Context exports are **AI-generated summaries**, not raw data. They capture:
+- **AES-256-GCM encryption** - Your data is encrypted before it leaves your machine
+- **Private GitHub Gists** - Only you can access your sync storage
+- **Zero plaintext** - Even if someone gets your Gist, they can't read it without your passphrase
 
-- Goals and objectives
-- Technical approaches and decisions
-- Progress and next steps
+---
 
-They **never** include:
-- Code snippets or implementations
-- API keys, tokens, or secrets
-- Database strings or internal URLs
-- Raw file contents
+## Migration from opencodesync
 
-Your intellectual property stays safe.
+If you were using `opencodesync`, your existing sync data will continue to work. The CLI also maintains backward compatibility:
+
+```bash
+# Both work the same
+opencodesync push
+coding-agent-sync push
+```
 
 ---
 
@@ -141,18 +141,18 @@ Your intellectual property stays safe.
 
 | Error | Solution |
 |-------|----------|
-| "Not configured" | Run `opencodesync init` |
+| "Not configured" | Run `coding-agent-sync init` |
 | "Decryption failed" | Use the same passphrase as your other devices |
 | "Invalid token" | Create a new GitHub token with `gist` scope |
 
-Need to start fresh? `opencodesync init --force && opencodesync push --force`
+Need to start fresh? `coding-agent-sync init --force && coding-agent-sync push --force`
 
 ---
 
 ## For Plugin Developers
 
 ```typescript
-import { createPluginTools, addContext, getAllContexts } from "opencodesync";
+import { createPluginTools, addContext, getAllContexts } from "coding-agent-sync";
 
 const tools = createPluginTools();
 const context = addContext("My Context", "Summary...");
@@ -168,5 +168,5 @@ MIT
 ---
 
 <p align="center">
-  <strong>Stop context-switching. Start syncing.</strong>
+  <strong>One config. Every device. All your AI assistants.</strong>
 </p>

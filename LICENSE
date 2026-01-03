@@ -1,4 +1,4 @@
-MIT License
+MIT License with Commons Clause
 
 Copyright (c) 2025 Tinh To
 
@@ -11,6 +11,17 @@ furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
+
+Commons Clause Restriction:
+
+The Software and any derivative works may not be used for commercial purposes.
+"Commercial purposes" means any use intended for or directed toward commercial
+advantage or monetary compensation, including but not limited to:
+- Selling the Software or derivative works
+- Using the Software to provide paid services
+- Including the Software in a commercial product
+
+For commercial licensing, contact: tctinh@gmail.com
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,

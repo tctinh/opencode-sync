@@ -4,80 +4,104 @@
 
 import { loadAuth } from "../../storage/auth.js";
 import { loadSyncState, formatLastSync, hasPendingChanges } from "../../storage/state.js";
-import { collectConfigFiles, getFileStats, formatSize } from "../../core/collector.js";
+import { collectFromProviders, getFileStats, formatSize } from "../../core/collector.js";
 import { loadContexts, getContextsHash } from "../../storage/contexts.js";
-import { paths } from "../../utils/paths.js";
+import { initializeProviders } from "../../providers/registry.js";
 
 interface StatusOptions {
   verbose?: boolean;
+  claude?: boolean;
+  opencode?: boolean;
+  all?: boolean;
+}
+
+function determineProviders(options: StatusOptions): string[] {
+  if (options.claude) return ['claude-code'];
+  if (options.opencode) return ['opencode'];
+  if (options.all === false) return [];
+  return ['claude-code', 'opencode'];
 }
 
 export async function statusCommand(options: StatusOptions): Promise<void> {
-  console.log("\n📊 OpenCode Sync Status\n");
-  
-  // Check auth
+  console.log("\n📊 Coding Agent Sync Status\n");
+
+  await initializeProviders();
+
   const auth = loadAuth();
   if (!auth) {
     console.log("Status: ❌ Not configured");
-    console.log("\nRun 'opencodesync init' to set up sync.");
+    console.log("\nRun 'coding-agent-sync init' to set up sync.");
     return;
   }
-  
+
   console.log("Status: ✅ Configured\n");
-  
-  // Paths
-  console.log("Paths:");
-  console.log(`  Config:  ${paths.config}`);
-  console.log(`  Sync:    ${paths.sync}`);
-  
-  // Gist info
+
+  const providerIds = determineProviders(options);
+
+  console.log("Providers:");
+  for (const providerId of providerIds) {
+    console.log(`  • ${providerId}`);
+  }
+
   console.log("\nGist:");
   if (auth.gistId) {
     console.log(`  ID: ${auth.gistId}`);
     console.log(`  URL: https://gist.github.com/${auth.gistId}`);
   } else {
-    console.log("  Not yet created (run 'opencodesync push')");
+    console.log("  Not yet created (run 'coding-agent-sync push')");
   }
-  
-  // Sync state
+
   const syncState = loadSyncState();
   console.log("\nLast Sync:");
   console.log(`  ${formatLastSync()}`);
-  
-  // Collect current files
+
   console.log("\nLocal Config Files:");
-  const collection = await collectConfigFiles();
-  const stats = getFileStats(collection.files);
-  
-  if (collection.files.length === 0) {
-    console.log("  No config files found");
+  const collection = await collectFromProviders({
+    providerIds,
+    installedOnly: true,
+  });
+
+  if (collection.results.size === 0) {
+    console.log("  No AI assistants found or configured");
   } else {
-    console.log(`  Total: ${stats.total} files (${formatSize(stats.totalSize)})`);
-    console.log(`  • ${stats.configs} config files`);
-    console.log(`  • ${stats.agents} custom agents`);
-    console.log(`  • ${stats.commands} custom commands`);
-    console.log(`  • ${stats.instructions} instruction files`);
-    if (stats.plugins > 0) console.log(`  • ${stats.plugins} plugin configs`);
-    if (stats.skills > 0) console.log(`  • ${stats.skills} skill files`);
-    
-    if (options.verbose) {
-      console.log("\n  Files:");
-      for (const file of collection.files) {
-        console.log(`    • ${file.relativePath}`);
+    let totalFiles = 0;
+    let totalSize = 0;
+
+    for (const [id, result] of collection.results) {
+      const stats = getFileStats(result.files);
+      totalFiles += stats.total;
+      totalSize += stats.totalSize;
+
+      console.log(`\n  ${id}:`);
+      console.log(`    Config: ${result.configDir}`);
+      console.log(`    Files: ${stats.total} (${formatSize(stats.totalSize)})`);
+      console.log(`      • ${stats.configs} config`);
+      console.log(`      • ${stats.agents} agents`);
+      console.log(`      • ${stats.commands} commands`);
+      console.log(`      • ${stats.instructions} instructions`);
+      if (stats.plugins > 0) console.log(`      • ${stats.plugins} plugins`);
+      if (stats.skills > 0) console.log(`      • ${stats.skills} skills`);
+
+      if (options.verbose && stats.total > 0) {
+        console.log("      Files:");
+        for (const file of result.files) {
+          console.log(`        • ${file.relativePath}`);
+        }
       }
     }
+
+    console.log(`\n  Total: ${totalFiles} files (${formatSize(totalSize)})`);
   }
-  
-  // Contexts
+
   const contexts = loadContexts();
   const contextsHash = getContextsHash();
-  
+
   console.log("\nSession Contexts:");
   if (contexts.contexts.length === 0) {
     console.log("  No contexts saved");
   } else {
     console.log(`  Total: ${contexts.contexts.length} contexts`);
-    
+
     if (options.verbose) {
       console.log("\n  Contexts:");
       for (const ctx of contexts.contexts) {
@@ -86,27 +110,26 @@ export async function statusCommand(options: StatusOptions): Promise<void> {
       }
     }
   }
-  
-  // Pending changes
+
   console.log("\nPending Changes:");
   if (auth.gistId && syncState.lastSync) {
     const hasChanges = hasPendingChanges(collection.combinedHash, contextsHash);
-    
+
     if (hasChanges) {
       const configChanged = syncState.configHash !== collection.combinedHash;
       const contextsChanged = syncState.contextsHash !== contextsHash;
-      
+
       console.log("  ⚠️  Local changes not pushed:");
       if (configChanged) console.log("    • Config files modified");
       if (contextsChanged) console.log("    • Contexts modified");
-      console.log("\n  Run 'opencodesync push' to sync.");
+      console.log("\n  Run 'coding-agent-sync push' to sync.");
     } else {
       console.log("  ✅ In sync with remote");
     }
   } else {
     console.log("  📤 Initial push required");
-    console.log("\n  Run 'opencodesync push' to upload your settings.");
+    console.log("\n  Run 'coding-agent-sync push' to upload your settings.");
   }
-  
+
   console.log("");
 }
