@@ -19,7 +19,7 @@ export class SyncStatusItem extends BaseTreeItem {
   ) {
     super(
       isConnected ? 'Connected to GitHub' : 'GitHub Not Connected',
-      vscode.TreeItemCollapsibleState.None,
+      isConnected ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
       isConnected ? 'syncStatus-connected' : 'syncStatus-disconnected'
     );
 
@@ -73,8 +73,8 @@ export class AssistantItem extends BaseTreeItem {
     switch (this.providerId) {
       case 'claude-code': return 'hubot';
       case 'opencode': return 'terminal';
-      case 'codex': return 'openai';
-      case 'gemini': return 'sparkle';
+      case 'codex': return 'book';
+      case 'gemini': return 'zap';
       default: return 'symbol-misc';
     }
   }
@@ -151,12 +151,21 @@ export class RemoteProviderItem extends BaseTreeItem {
     public readonly fileCount: number
   ) {
     super(
-      providerId === 'opencode' ? 'OpenCode' : 'Claude Code',
+      providerId === 'opencode' ? 'OpenCode' : (providerId === 'claude-code' ? 'Claude Code' : (providerId === 'codex' ? 'Codex' : 'Gemini')),
       vscode.TreeItemCollapsibleState.Collapsed,
       'remoteProvider'
     );
     this.description = `${fileCount} files`;
-    this.iconPath = new vscode.ThemeIcon(providerId === 'opencode' ? 'terminal' : (providerId === 'claude-code' ? 'hubot' : (providerId === 'codex' ? 'openai' : 'sparkle')));
+    this.iconPath = new vscode.ThemeIcon(this.getIcon());
+  }
+  private getIcon(): string {
+    switch (this.providerId) {
+      case 'claude-code': return 'hubot';
+      case 'opencode': return 'terminal';
+      case 'codex': return 'book';
+      case 'gemini': return 'zap';
+      default: return 'cloud';
+    }
   }
 }
 
@@ -207,7 +216,7 @@ export class RemoteFolderItem extends BaseTreeItem {
     public readonly folderName: string,
     public readonly folderPath: string,
     public readonly providerId: AssistantType,
-    public readonly category: 'skills' | 'rules' | 'commands' | 'agents'
+    public readonly category: 'settings' | 'plugins' | 'skills' | 'rules' | 'commands' | 'agents'
   ) {
     super(folderName, vscode.TreeItemCollapsibleState.Collapsed, 'remoteFolder');
     this.iconPath = new vscode.ThemeIcon('folder');

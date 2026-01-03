@@ -1,7 +1,7 @@
 {
   "name": "coding-agent-sync",
   "displayName": "Coding Agent Sync",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "description": "Sync AI coding assistant configs (Claude Code, OpenCode, Codex) across devices via GitHub Gist",
   "publisher": "tctinh",
   "icon": "icon.png",
@@ -292,17 +292,10 @@
         },
         "codingAgentSync.enabledProviders": {
           "type": "array",
-          "default": [
-            "claude-code",
-            "opencode"
-          ],
+          "default": ["claude-code", "opencode", "codex", "gemini"],
           "items": {
             "type": "string",
-            "enum": [
-              "claude-code",
-              "opencode",
-              "codex"
-            ]
+            "enum": ["claude-code", "opencode", "codex", "gemini"]
           },
           "description": "AI assistants to manage"
         }

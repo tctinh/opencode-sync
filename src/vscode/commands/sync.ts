@@ -11,11 +11,40 @@ import { getGlobalMCPServers } from '../../providers/mcp.js';
 import type { SyncPayload, SyncPayloadV2 } from '../../providers/types.js';
 import { isPayloadV2 } from '../../providers/types.js';
 import { RemoteEnvironmentItem } from '../views/TreeItems.js';
+import { writeFileSync, existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
+
+/**
+ * Remote Content Provider for Diff View
+ */
+class RemoteContentProvider implements vscode.TextDocumentContentProvider {
+  static scheme = 'coding-agent-sync-remote';
+  private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
+  readonly onDidChange = this._onDidChange.event;
+  private contentCache = new Map<string, string>();
+
+  setContent(uri: vscode.Uri, content: string) {
+    this.contentCache.set(uri.toString(), content);
+    this._onDidChange.fire(uri);
+  }
+
+  provideTextDocumentContent(uri: vscode.Uri): string {
+    return this.contentCache.get(uri.toString()) || '';
+  }
+}
+
+const remoteProvider = new RemoteContentProvider();
 
 export function registerSyncCommands(
   context: vscode.ExtensionContext,
   treeProvider: ConfigTreeProvider
 ): void {
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(RemoteContentProvider.scheme, remoteProvider)
+  );
+
+  // Connect to GitHub
   context.subscriptions.push(
     vscode.commands.registerCommand('codingAgentSync.connect', async () => {
       const token = await vscode.window.showInputBox({
@@ -76,6 +105,7 @@ export function registerSyncCommands(
     })
   );
 
+  // Disconnect
   context.subscriptions.push(
     vscode.commands.registerCommand('codingAgentSync.disconnect', async () => {
       const confirm = await vscode.window.showWarningMessage(
@@ -92,6 +122,7 @@ export function registerSyncCommands(
     })
   );
 
+  // Unified Push command (from Title bar or Menu)
   context.subscriptions.push(
     vscode.commands.registerCommand('codingAgentSync.push', async () => {
       const auth = loadAuth();
@@ -134,6 +165,7 @@ export function registerSyncCommands(
     })
   );
 
+  // Inline Push (Sync Local -> This Gist)
   context.subscriptions.push(
     vscode.commands.registerCommand('codingAgentSync.pushToGist', async (item: RemoteEnvironmentItem) => {
       const auth = loadAuth();
@@ -142,6 +174,7 @@ export function registerSyncCommands(
     })
   );
 
+  // Inline Pull (Sync This Gist -> Local)
   context.subscriptions.push(
     vscode.commands.registerCommand('codingAgentSync.pullFromGist', async (item: RemoteEnvironmentItem) => {
       const auth = loadAuth();
@@ -221,77 +254,216 @@ async function performPush(auth: any, gistId: string | undefined, name: string, 
   );
 }
 
+interface Conflict {
+  name: string;
+  localPath: string;
+  localContent: string;
+  remoteContent: string;
+  remoteUri: vscode.Uri;
+  localUri: vscode.Uri;
+}
+
 async function performPull(auth: any, gistId: string, treeProvider: ConfigTreeProvider) {
+  try {
+    const gist = await getGist(auth.githubToken, gistId);
+    const file = gist.files['coding-agent-sync.json'] || gist.files['opencodesync.json'];
+    if (!file?.content) throw new Error('No sync data in Gist');
+
+    const payload = decryptObject<SyncPayload>(JSON.parse(file.content), auth.passphrase);
+    await initializeProviders();
+
+    const conflicts: Conflict[] = [];
+    const mcpPath = join(homedir(), '.mcp.json');
+
+    // 1. Detect MCP Conflicts
+    if (isPayloadV2(payload) && payload.mcpServers) {
+      const mcpConfig = { mcpServers: {} as Record<string, any> };
+      payload.mcpServers.forEach(s => {
+        const { name, ...cfg } = s;
+        mcpConfig.mcpServers[name] = cfg;
+      });
+      const remoteMcpContent = JSON.stringify(mcpConfig, null, 4);
+      if (existsSync(mcpPath)) {
+        const localMcpContent = readFileSync(mcpPath, 'utf8');
+        if (localMcpContent !== remoteMcpContent) {
+          const uri = vscode.Uri.parse(`${RemoteContentProvider.scheme}:/.mcp.json?gistId=${gistId}`);
+          remoteProvider.setContent(uri, remoteMcpContent);
+          conflicts.push({
+            name: '.mcp.json',
+            localPath: mcpPath,
+            localContent: localMcpContent,
+            remoteContent: remoteMcpContent,
+            remoteUri: uri,
+            localUri: vscode.Uri.file(mcpPath)
+          });
+        }
+      }
+    }
+
+    // 2. Detect Provider Conflicts
+    if (isPayloadV2(payload)) {
+      for (const [providerId, data] of Object.entries(payload.providers)) {
+        const provider = getProvider(providerId as any);
+        if (provider && data) {
+          for (const f of data.files) {
+            const localFilePath = join(provider.configDir, f.path);
+            if (existsSync(localFilePath)) {
+              const localContent = readFileSync(localFilePath, 'utf8');
+              if (localContent !== f.content) {
+                const uri = vscode.Uri.parse(`${RemoteContentProvider.scheme}:${providerId}/${f.path}?gistId=${gistId}`);
+                remoteProvider.setContent(uri, f.content);
+                conflicts.push({
+                  name: `${providerId}/${f.path}`,
+                  localPath: localFilePath,
+                  localContent: localContent,
+                  remoteContent: f.content,
+                  remoteUri: uri,
+                  localUri: vscode.Uri.file(localFilePath)
+                });
+              }
+            }
+          }
+        }
+      }
+    } else {
+      const opencode = getProvider('opencode');
+      if (opencode) {
+        for (const f of payload.config.files) {
+          const localFilePath = join(opencode.configDir, f.path);
+          if (existsSync(localFilePath)) {
+            const localContent = readFileSync(localFilePath, 'utf8');
+            if (localContent !== f.content) {
+              const uri = vscode.Uri.parse(`${RemoteContentProvider.scheme}:opencode/${f.path}?gistId=${gistId}`);
+              remoteProvider.setContent(uri, f.content);
+              conflicts.push({
+                name: `opencode/${f.path}`,
+                localPath: localFilePath,
+                localContent: localContent,
+                remoteContent: f.content,
+                remoteUri: uri,
+                localUri: vscode.Uri.file(localFilePath)
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (conflicts.length > 0) {
+      const choice = await vscode.window.showWarningMessage(
+        `Conflicts detected in ${conflicts.length} files. Review changes or overwrite all?`,
+        { modal: true },
+        'Review Changes',
+        'Overwrite All'
+      );
+
+      if (!choice) return;
+
+      if (choice === 'Review Changes') {
+        await reviewConflicts(conflicts, async () => {
+          await applyPull(gistId, payload, treeProvider);
+        });
+        return;
+      }
+    }
+
+    await applyPull(gistId, payload, treeProvider);
+
+  } catch (error) {
+    vscode.window.showErrorMessage(`Pull failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+async function reviewConflicts(conflicts: Conflict[], onConfirm: () => Promise<void>) {
+  const items = conflicts.map(c => ({
+    label: c.name,
+    description: 'Click to view diff',
+    conflict: c
+  }));
+
+  const pick = vscode.window.createQuickPick<typeof items[0]>();
+  pick.items = items;
+  pick.placeholder = 'Select a file to review differences';
+  pick.title = 'Conflicting Files';
+  pick.buttons = [{ iconPath: new vscode.ThemeIcon('check'), tooltip: 'Confirm and Apply All' }];
+
+  pick.onDidAccept(async () => {
+    const selected = pick.selectedItems[0];
+    if (selected) {
+      await vscode.commands.executeCommand(
+        'vscode.diff',
+        selected.conflict.localUri,
+        selected.conflict.remoteUri,
+        `${selected.conflict.name} (Local ↔ Remote)`
+      );
+    }
+  });
+
+  pick.onDidTriggerButton(async () => {
+    pick.hide();
+    await onConfirm();
+  });
+
+  pick.show();
+}
+
+async function applyPull(gistId: string, payload: SyncPayload, treeProvider: ConfigTreeProvider) {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: 'Pulling configuration...',
+      title: 'Applying remote configuration...',
     },
     async () => {
-      try {
-        const gist = await getGist(auth.githubToken, gistId);
-        const file = gist.files['coding-agent-sync.json'] || gist.files['opencodesync.json'];
-        if (!file?.content) throw new Error('No sync data in Gist');
+      let fileCount = 0;
+      let configHash = '';
+      let contextsHash = null;
 
-        const payload = decryptObject<SyncPayload>(JSON.parse(file.content), auth.passphrase);
-        await initializeProviders();
-
-        let fileCount = 0;
-        let configHash = '';
-        let contextsHash = null;
-
-        if (isPayloadV2(payload)) {
-          configHash = ''; // V2 doesn't have a single hash in same way yet
-          contextsHash = payload.contexts.hash;
-          
-          if (payload.mcpServers) {
-            const { writeFileSync } = await import('fs');
-            const { join } = await import('path');
-            const { homedir } = await import('os');
-            const mcpPath = join(homedir(), '.mcp.json');
-            const mcpConfig = { mcpServers: {} as Record<string, any> };
-            payload.mcpServers.forEach(s => {
-              const cfg: any = { type: s.type };
-              if (s.command) cfg.command = s.command;
-              if (s.args) cfg.args = s.args;
-              if (s.env) cfg.env = s.env;
-              if (s.url) cfg.url = s.url;
-              if (s.headers) cfg.headers = s.headers;
-              if (s.cwd) cfg.cwd = s.cwd;
-              if (s.enabled === false) cfg.disabled = true;
-              mcpConfig.mcpServers[s.name] = cfg;
-            });
-            writeFileSync(mcpPath, JSON.stringify(mcpConfig, null, 4));
-          }
-
-          for (const [id, data] of Object.entries(payload.providers)) {
-            const provider = getProvider(id as any);
-            if (provider && data) {
-              await provider.applyFiles(data.files.map(f => ({ relativePath: f.path, content: f.content, hash: '' })));
-              fileCount += data.files.length;
-            }
-          }
-
-          if (payload.contexts) {
-            saveContexts({ contexts: payload.contexts.items.map(c => ({ ...c, size: Buffer.byteLength(c.summary) })), version: 1 });
-          }
-        } else {
-          configHash = payload.config.hash;
-          contextsHash = payload.contexts.hash;
-          const opencode = getProvider('opencode');
-          if (opencode) {
-            await opencode.applyFiles(payload.config.files.map(f => ({ relativePath: f.path, content: f.content, hash: '' })));
-            fileCount = payload.config.files.length;
-          }
-          saveContexts({ contexts: payload.contexts.items.map(c => ({ ...c, size: Buffer.byteLength(c.summary) })), version: 1 });
+      if (isPayloadV2(payload)) {
+        configHash = ''; 
+        contextsHash = payload.contexts.hash;
+        
+        if (payload.mcpServers) {
+          const mcpPath = join(homedir(), '.mcp.json');
+          const mcpConfig = { mcpServers: {} as Record<string, any> };
+          payload.mcpServers.forEach(s => {
+            const cfg: any = { type: s.type };
+            if (s.command) cfg.command = s.command;
+            if (s.args) cfg.args = s.args;
+            if (s.env) cfg.env = s.env;
+            if (s.url) cfg.url = s.url;
+            if (s.headers) cfg.headers = s.headers;
+            if (s.cwd) cfg.cwd = s.cwd;
+            if (s.enabled === false) cfg.disabled = true;
+            mcpConfig.mcpServers[s.name] = cfg;
+          });
+          writeFileSync(mcpPath, JSON.stringify(mcpConfig, null, 4));
         }
 
-        recordSync(gistId, configHash, contextsHash);
-        vscode.window.showInformationMessage('Pull complete! Local environment replaced.');
-        treeProvider.refresh();
-      } catch (error) {
-        vscode.window.showErrorMessage(`Pull failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        for (const [id, data] of Object.entries(payload.providers)) {
+          const provider = getProvider(id as any);
+          if (provider && data) {
+            await provider.applyFiles(data.files.map(f => ({ relativePath: f.path, content: f.content, hash: '' })));
+            fileCount += data.files.length;
+          }
+        }
+
+        if (payload.contexts) {
+          saveContexts({ contexts: payload.contexts.items.map(c => ({ ...c, size: Buffer.byteLength(c.summary) })), version: 1 });
+        }
+      } else {
+        configHash = payload.config.hash;
+        contextsHash = payload.contexts.hash;
+        const opencode = getProvider('opencode');
+        if (opencode) {
+          await opencode.applyFiles(payload.config.files.map(f => ({ relativePath: f.path, content: f.content, hash: '' })));
+          fileCount = payload.config.files.length;
+        }
+        saveContexts({ contexts: payload.contexts.items.map(c => ({ ...c, size: Buffer.byteLength(c.summary) })), version: 1 });
       }
+
+      recordSync(gistId, configHash, contextsHash);
+      vscode.window.showInformationMessage('Pull complete! Local environment replaced.');
+      treeProvider.refresh();
     }
   );
 }

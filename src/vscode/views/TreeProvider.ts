@@ -24,7 +24,7 @@ import {
   ProjectFileItem,
   EmptyItem,
 } from './TreeItems.js';
-import { getInstalledProviders, initializeProviders } from '../../providers/registry.js';
+import { initializeProviders, getAllProviders } from '../../providers/registry.js';
 import { getGlobalMCPServers } from '../../providers/mcp.js';
 import { listSyncGists, getGist } from '../../core/gist.js';
 import type { AssistantProvider, AssistantType, SyncPayload } from '../../providers/types.js';
@@ -48,7 +48,7 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<TreeItem> {
 
   private async initialize(): Promise<void> {
     await initializeProviders();
-    this.providers = await getInstalledProviders();
+    this.providers = getAllProviders();
     this.initialized = true;
     this._onDidChangeTreeData.fire();
   }
@@ -107,12 +107,18 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     items.push(new GlobalMCPItem(getGlobalMCPServers().length));
 
     const config = vscode.workspace.getConfiguration('codingAgentSync');
-    const enabledProviders = config.get<string[]>('enabledProviders') || ['claude-code', 'opencode'];
+    const enabledProviders = config.get<string[]>('enabledProviders') || ['claude-code', 'opencode', 'codex', 'gemini'];
 
     for (const provider of this.providers) {
       if (enabledProviders.includes(provider.id)) {
         const isInstalled = await provider.isInstalled();
-        const configPath = provider.id === 'claude-code' ? '~/.claude/' : '~/.config/opencode/';
+        let configPath = '';
+        switch(provider.id) {
+          case 'claude-code': configPath = '~/.claude/'; break;
+          case 'opencode': configPath = '~/.config/opencode/'; break;
+          case 'codex': configPath = '~/.codex/'; break;
+          case 'gemini': configPath = '~/.gemini/'; break;
+        }
         items.push(new AssistantItem(provider.id, provider.name, isInstalled, configPath));
       }
     }
