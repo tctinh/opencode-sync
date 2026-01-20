@@ -110,6 +110,7 @@ export const configPatterns = {
   pluginConfigs: [
     "*.jsonc",                    // General pattern (DCP, smart-title, etc.)
     "oh-my-opencode.json",        // oh-my-opencode specific
+    "oh-my-opencode-slim.json",   // oh-my-opencode slim preset
   ],
 
   /**

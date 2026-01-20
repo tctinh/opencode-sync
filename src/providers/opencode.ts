@@ -32,6 +32,7 @@ const PLUGIN_CONFIGS: Record<string, string> = {
   "antigravity.json": "OpenCode Antigravity Auth",
   "dcp.jsonc": "OpenCode DCP",
   "oh-my-opencode.json": "Oh My OpenCode",
+  "oh-my-opencode-slim.json": "Oh My OpenCode (Slim)",
   "smart-title.jsonc": "Smart Title",
 };
 

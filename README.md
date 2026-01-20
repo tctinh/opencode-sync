@@ -61,7 +61,7 @@ That's it. The wizard walks you through setup and automatically syncs your setti
 | Custom agents (`agent/*.md`) | ✅ |
 | Custom commands (`command/*.md`) | ✅ |
 | Global instructions (`AGENTS.md`) | ✅ |
-| Plugin configs (`*.jsonc`) | ✅ |
+| Plugin configs (`*.jsonc`, `oh-my-opencode*.json`) | ✅ |
 | Skills directory (`skill/**`) | ✅ |
 | Session contexts | ✅ |
 

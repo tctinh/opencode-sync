@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.2.10] - 2026-01-20
+
+### Added
+- Sync `oh-my-opencode-slim.json` for OpenCode
+
 ## [0.2.0] - 2025-01-03
 
 ### Added

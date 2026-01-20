@@ -254,7 +254,8 @@ export function getFileStats(files: CollectedFile[]): {
       skills++;
     } else if (
       file.relativePath.endsWith(".jsonc") ||
-      file.relativePath === "oh-my-opencode.json"
+      file.relativePath === "oh-my-opencode.json" ||
+      file.relativePath === "oh-my-opencode-slim.json"
     ) {
       plugins++;
     }

@@ -353,7 +353,7 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<TreeItem> {
         else if (f.path.startsWith('rules/')) cat = 'rules';
         else if (f.path.startsWith('command/')) cat = 'commands';
         else if (f.path.startsWith('agent/')) cat = 'agents';
-        else if (f.path.endsWith('.jsonc') || f.path === 'oh-my-opencode.json' || f.path === 'antigravity.json') cat = 'plugins';
+        else if (f.path.endsWith('.jsonc') || f.path === 'oh-my-opencode.json' || f.path === 'oh-my-opencode-slim.json' || f.path === 'antigravity.json') cat = 'plugins';
         categories[cat] = (categories[cat] || 0) + 1;
       });
 
@@ -384,7 +384,7 @@ export class ConfigTreeProvider implements vscode.TreeDataProvider<TreeItem> {
       const prefix = this.getPrefixForCategory(categoryItem.category);
       const filtered = files.filter(f => {
         if (categoryItem.category === 'settings') return f.path === 'opencode.json' || f.path === 'settings.json' || f.path === 'settings.local.json' || f.path === '.claude.json';
-        if (categoryItem.category === 'plugins') return f.path.endsWith('.jsonc') || f.path === 'oh-my-opencode.json' || f.path === 'antigravity.json';
+        if (categoryItem.category === 'plugins') return f.path.endsWith('.jsonc') || f.path === 'oh-my-opencode.json' || f.path === 'oh-my-opencode-slim.json' || f.path === 'antigravity.json';
         return f.path.startsWith(prefix);
       });
 
